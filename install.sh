@@ -77,6 +77,12 @@ else
 fi
 cd "$REPO_DIR"
 
+# docker-compose.override.yml is dev-only (bind-mounts source, runs the Vite
+# dev server instead of the production nginx build) -- exclude it here so a
+# production install never picks it up just because it happens to sit next
+# to docker-compose.yml in the same directory.
+export COMPOSE_FILE=docker-compose.yml
+
 # A prior run may have already fallen back to a non-80 port (see the
 # port-retry logic below) -- honor that instead of retrying 80 forever.
 if [ -f .env ] && grep -q '^FRONTEND_PORT=' .env; then
@@ -186,7 +192,7 @@ if ! try_up; then
     fi
     if [ "$STARTED" -ne 1 ]; then
       err "Could not start the frontend container even after retries and a Docker daemon restart."
-      err "Free up one of the tried ports (80, 8080, 8888, 8081), or set FRONTEND_PORT in .env yourself, then re-run: docker compose up -d"
+      err "Free up one of the tried ports (80, 8080, 8888, 8081), or set FRONTEND_PORT in .env yourself, then re-run: docker compose -f docker-compose.yml up -d"
       exit 1
     fi
   else
