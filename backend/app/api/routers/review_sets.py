@@ -111,6 +111,7 @@ async def list_review_set_documents(
         select(ReviewSetDocument, Document)
         .join(Document, Document.id == ReviewSetDocument.document_id)
         .where(ReviewSetDocument.review_set_id == review_set_id)
+        .order_by(Document.sent_at.asc().nullslast(), Document.id)
     )
     return [_to_read(link, document) for link, document in result.all()]
 

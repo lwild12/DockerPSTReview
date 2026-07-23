@@ -5,23 +5,39 @@ import {
   Container,
   Grid,
   Group,
+  Select,
   Spoiler,
   Stack,
   Text,
   Title,
 } from "@mantine/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 import { documentPdfUrl, getDocument } from "../api/documents";
 import { createRedaction, deleteRedaction, listRedactions } from "../api/redactions";
+import {
+  listReviewSetDocuments,
+  updateReviewSetDocument,
+  type ReviewStatus,
+} from "../api/reviewSets";
 import { PdfViewer } from "../components/PdfViewer";
 import { TagPicker } from "../components/TagPicker";
 import { ThreadPanel } from "../components/ThreadPanel";
 
+const STATUS_COLOR: Record<ReviewStatus, string> = {
+  unreviewed: "gray",
+  in_review: "blue",
+  reviewed: "green",
+  flagged: "red",
+};
+
 export function DocumentViewerPage() {
   const { caseId = "", documentId = "" } = useParams<{ caseId: string; documentId: string }>();
+  const [searchParams] = useSearchParams();
+  const reviewSetId = searchParams.get("reviewSet") ?? "";
+  const navigate = useNavigate();
   const enabled = caseId !== "" && documentId !== "";
   const queryClient = useQueryClient();
   const [redactionMode, setRedactionMode] = useState(false);
@@ -30,6 +46,43 @@ export function DocumentViewerPage() {
     queryKey: ["document", caseId, documentId],
     queryFn: () => getDocument(caseId, documentId),
     enabled,
+  });
+
+  const { data: reviewSetDocs } = useQuery({
+    queryKey: ["review-set-documents", caseId, reviewSetId],
+    queryFn: () => listReviewSetDocuments(caseId, reviewSetId),
+    enabled: enabled && reviewSetId !== "",
+  });
+
+  const currentIndex = reviewSetDocs?.findIndex((d) => d.document_id === documentId) ?? -1;
+  const currentReviewDoc = currentIndex >= 0 ? reviewSetDocs?.[currentIndex] : undefined;
+  const prevDoc = currentIndex > 0 ? reviewSetDocs?.[currentIndex - 1] : undefined;
+  const nextDoc =
+    reviewSetDocs && currentIndex >= 0 && currentIndex < reviewSetDocs.length - 1
+      ? reviewSetDocs[currentIndex + 1]
+      : undefined;
+
+  const goTo = (targetDocumentId: string) =>
+    navigate(`/cases/${caseId}/documents/${targetDocumentId}?reviewSet=${reviewSetId}`);
+
+  useEffect(() => {
+    if (reviewSetId === "") return;
+    const handler = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target && ["INPUT", "TEXTAREA"].includes(target.tagName)) return;
+      if (e.key === "ArrowLeft" && prevDoc) goTo(prevDoc.document_id);
+      if (e.key === "ArrowRight" && nextDoc) goTo(nextDoc.document_id);
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reviewSetId, prevDoc, nextDoc]);
+
+  const statusMutation = useMutation({
+    mutationFn: (status: ReviewStatus) =>
+      updateReviewSetDocument(caseId, reviewSetId, documentId, { review_status: status }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ["review-set-documents", caseId, reviewSetId] }),
   });
 
   const { data: redactions } = useQuery({
@@ -60,9 +113,42 @@ export function DocumentViewerPage() {
 
   return (
     <Container size="xl" py="xl">
-      <Anchor component={Link} to={`/cases/${caseId}/documents`} size="sm">
-        ← Back to documents
-      </Anchor>
+      <Group justify="space-between">
+        <Anchor
+          component={Link}
+          to={
+            reviewSetId !== ""
+              ? `/cases/${caseId}/review-sets/${reviewSetId}`
+              : `/cases/${caseId}/documents`
+          }
+          size="sm"
+        >
+          ← Back to {reviewSetId !== "" ? "review set" : "documents"}
+        </Anchor>
+        {reviewSetId !== "" && reviewSetDocs && currentIndex >= 0 && (
+          <Group gap="xs">
+            <Text size="sm" c="dimmed">
+              {currentIndex + 1} of {reviewSetDocs.length}
+            </Text>
+            <Button
+              size="xs"
+              variant="light"
+              disabled={!prevDoc}
+              onClick={() => prevDoc && goTo(prevDoc.document_id)}
+            >
+              ← Previous
+            </Button>
+            <Button
+              size="xs"
+              variant="light"
+              disabled={!nextDoc}
+              onClick={() => nextDoc && goTo(nextDoc.document_id)}
+            >
+              Next →
+            </Button>
+          </Group>
+        )}
+      </Group>
 
       {isLoading && <Text mt="md">Loading...</Text>}
 
@@ -70,7 +156,24 @@ export function DocumentViewerPage() {
         <>
           <Group justify="space-between" mt="sm" mb="md">
             <Title order={3}>{document.subject || "(no subject)"}</Title>
-            <Badge>{document.doc_type}</Badge>
+            <Group gap="xs">
+              {currentReviewDoc && (
+                <>
+                  <Select
+                    size="xs"
+                    w={140}
+                    data={["unreviewed", "in_review", "reviewed", "flagged"]}
+                    value={currentReviewDoc.review_status}
+                    allowDeselect={false}
+                    onChange={(value) => value && statusMutation.mutate(value as ReviewStatus)}
+                  />
+                  <Badge color={STATUS_COLOR[currentReviewDoc.review_status]} size="sm">
+                    {currentReviewDoc.review_status.replace("_", " ")}
+                  </Badge>
+                </>
+              )}
+              <Badge>{document.doc_type}</Badge>
+            </Group>
           </Group>
 
           <Stack gap={4} mb="md">
