@@ -6,6 +6,7 @@ import {
   Group,
   List,
   Modal,
+  Select,
   Stack,
   Text,
   TextInput,
@@ -134,12 +135,13 @@ export function CaseDetailPage() {
               value={memberUserId}
               onChange={(e) => setMemberUserId(e.currentTarget.value)}
             />
-            <TextInput
+            <Select
               label="Role"
-              description="admin, reviewer, or viewer"
+              data={["admin", "reviewer", "viewer"]}
               required
+              allowDeselect={false}
               value={memberRole}
-              onChange={(e) => setMemberRole(e.currentTarget.value as CaseRole)}
+              onChange={(value) => setMemberRole(value as CaseRole)}
             />
             <Button type="submit" loading={addMemberMutation.isPending}>
               Add

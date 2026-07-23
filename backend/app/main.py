@@ -1,12 +1,28 @@
+import logging
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routers import auth, cases, custodians
-from app.config import get_settings
+from app.config import DEFAULT_JWT_SECRET, get_settings
 
+logger = logging.getLogger("app")
 settings = get_settings()
 
-app = FastAPI(title="PST Document Review")
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
+    if settings.jwt_secret == DEFAULT_JWT_SECRET:
+        logger.warning(
+            "JWT_SECRET is still set to the default placeholder value — sessions are "
+            "forgeable. Set a long random JWT_SECRET via the environment before deploying."
+        )
+    yield
+
+
+app = FastAPI(title="PST Document Review", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,

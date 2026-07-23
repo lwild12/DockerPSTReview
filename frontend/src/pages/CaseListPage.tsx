@@ -14,14 +14,13 @@ import {
 import { useDisclosure } from "@mantine/hooks";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 
 import { createCase, listCases } from "../api/cases";
 import { useAuth } from "../hooks/useAuth";
 
 export function CaseListPage() {
   const { user, logout } = useAuth();
-  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [opened, { open, close }] = useDisclosure(false);
   const [name, setName] = useState("");
@@ -52,7 +51,7 @@ export function CaseListPage() {
           <Text size="sm" c="dimmed">
             {user?.email}
           </Text>
-          <Button variant="subtle" onClick={() => logout()}>
+          <Button variant="subtle" onClick={() => { logout().catch(() => {}); }}>
             Sign out
           </Button>
         </Group>
@@ -66,7 +65,7 @@ export function CaseListPage() {
 
       <Stack>
         {cases?.map((c) => (
-          <Card key={c.id} withBorder padding="lg" onClick={() => navigate(`/cases/${c.id}`)} style={{ cursor: "pointer" }}>
+          <Card key={c.id} component={Link} to={`/cases/${c.id}`} withBorder padding="lg">
             <Group justify="space-between">
               <div>
                 <Text fw={600}>{c.name}</Text>

@@ -1,4 +1,4 @@
-.PHONY: up down build logs migrate test lint fmt shell-backend
+.PHONY: up down build logs migrate makemigration test lint fmt shell-backend
 
 up:
 	docker compose up -d --build
