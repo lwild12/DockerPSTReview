@@ -1,0 +1,25 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  body { font-family: sans-serif; font-size: 12pt; color: #111; }
+  .box { border: 2px dashed #999; padding: 24px; margin-top: 40px; }
+  table { margin-top: 12px; }
+  td.label { font-weight: bold; padding-right: 10px; }
+</style>
+</head>
+<body>
+  <div class="box">
+    <h2>Native file not renderable</h2>
+    <p>This attachment's format is not supported for PDF preview. The original file
+    is preserved and available for download.</p>
+    <table>
+      <tr><td class="label">Filename</td><td>{{ filename }}</td></tr>
+      <tr><td class="label">MIME type</td><td>{{ mime_type }}</td></tr>
+      <tr><td class="label">Size</td><td>{{ size }} bytes</td></tr>
+      <tr><td class="label">SHA-256</td><td>{{ content_hash }}</td></tr>
+    </table>
+  </div>
+</body>
+</html>
