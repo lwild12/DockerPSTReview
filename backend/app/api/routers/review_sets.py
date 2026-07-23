@@ -24,6 +24,23 @@ from app.services.audit import record_audit
 router = APIRouter(prefix="/cases/{case_id}/review-sets", tags=["review-sets"])
 
 
+def _to_read(link: ReviewSetDocument, document: Document) -> ReviewSetDocumentRead:
+    return ReviewSetDocumentRead(
+        id=link.id,
+        review_set_id=link.review_set_id,
+        document_id=link.document_id,
+        review_status=link.review_status,
+        assigned_reviewer_id=link.assigned_reviewer_id,
+        reviewed_by_id=link.reviewed_by_id,
+        reviewed_at=link.reviewed_at,
+        notes=link.notes,
+        document_subject=document.subject,
+        document_sender=document.sender,
+        document_doc_type=document.doc_type.value,
+        document_sent_at=document.sent_at,
+    )
+
+
 @router.get("", response_model=list[ReviewSetRead])
 async def list_review_sets(
     case_id: uuid.UUID,
@@ -91,9 +108,11 @@ async def list_review_set_documents(
     if review_set is None or review_set.case_id != case_id:
         raise HTTPException(status_code=404, detail="Review set not found")
     result = await db.execute(
-        select(ReviewSetDocument).where(ReviewSetDocument.review_set_id == review_set_id)
+        select(ReviewSetDocument, Document)
+        .join(Document, Document.id == ReviewSetDocument.document_id)
+        .where(ReviewSetDocument.review_set_id == review_set_id)
     )
-    return result.scalars().all()
+    return [_to_read(link, document) for link, document in result.all()]
 
 
 @router.post(
@@ -121,21 +140,19 @@ async def add_documents_to_review_set(
     already_added = {row[0] for row in existing_result.all()}
 
     valid_docs = await db.execute(
-        select(Document.id).where(
-            Document.id.in_(payload.document_ids), Document.case_id == case_id
-        )
+        select(Document).where(Document.id.in_(payload.document_ids), Document.case_id == case_id)
     )
-    valid_ids = {row[0] for row in valid_docs.all()}
+    valid_documents = {d.id: d for d in valid_docs.scalars().all()}
 
-    created = []
+    created: list[tuple[ReviewSetDocument, Document]] = []
     for document_id in payload.document_ids:
-        if document_id not in valid_ids or document_id in already_added:
+        if document_id not in valid_documents or document_id in already_added:
             continue
         link = ReviewSetDocument(
             id=uuid.uuid4(), review_set_id=review_set_id, document_id=document_id
         )
         db.add(link)
-        created.append(link)
+        created.append((link, valid_documents[document_id]))
 
     if created:
         record_audit(
@@ -145,12 +162,10 @@ async def add_documents_to_review_set(
             "review_set.documents_added",
             "review_set",
             str(review_set_id),
-            {"document_ids": [str(link.document_id) for link in created]},
+            {"document_ids": [str(link.document_id) for link, _ in created]},
         )
     await db.commit()
-    for link in created:
-        await db.refresh(link)
-    return created
+    return [_to_read(link, document) for link, document in created]
 
 
 @router.patch("/{review_set_id}/documents/{document_id}", response_model=ReviewSetDocumentRead)
@@ -196,5 +211,5 @@ async def update_review_set_document(
         {"review_set_id": str(review_set_id), "review_status": link.review_status.value},
     )
     await db.commit()
-    await db.refresh(link)
-    return link
+    document = await db.get(Document, document_id)
+    return _to_read(link, document)

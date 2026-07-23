@@ -12,11 +12,14 @@ import {
 import { useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
+import { register } from "../api/auth";
+import { ApiError } from "../api/client";
 import { useAuth } from "../hooks/useAuth";
 
-export function LoginPage() {
+export function RegisterPage() {
   const { login } = useAuth();
   const navigate = useNavigate();
+  const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -27,10 +30,15 @@ export function LoginPage() {
     setError(null);
     setSubmitting(true);
     try {
+      await register(email, password, fullName);
       await login(email, password);
       navigate("/cases");
-    } catch {
-      setError("Invalid email or password");
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 400) {
+        setError("That email is already registered, or the password is too weak.");
+      } else {
+        setError("Registration failed. Please try again.");
+      }
     } finally {
       setSubmitting(false);
     }
@@ -40,15 +48,20 @@ export function LoginPage() {
     <Stack align="center" justify="center" mih="100vh">
       <Paper withBorder shadow="md" p="xl" w={380}>
         <Title order={2} mb="lg">
-          PST Document Review
+          Create your account
         </Title>
         <form onSubmit={handleSubmit}>
           <Stack>
             {error && (
-              <Alert color="red" title="Login failed">
+              <Alert color="red" title="Couldn't create account">
                 {error}
               </Alert>
             )}
+            <TextInput
+              label="Full name"
+              value={fullName}
+              onChange={(e) => setFullName(e.currentTarget.value)}
+            />
             <TextInput
               label="Email"
               type="email"
@@ -63,10 +76,10 @@ export function LoginPage() {
               onChange={(e) => setPassword(e.currentTarget.value)}
             />
             <Button type="submit" loading={submitting} fullWidth>
-              Sign in
+              Register
             </Button>
             <Text size="sm" ta="center">
-              Need an account? <Anchor component={Link} to="/register">Register</Anchor>
+              Already have an account? <Anchor component={Link} to="/login">Sign in</Anchor>
             </Text>
           </Stack>
         </form>

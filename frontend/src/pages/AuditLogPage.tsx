@@ -52,7 +52,7 @@ export function AuditLogPage() {
               </Table.Td>
               <Table.Td>
                 <Text size="sm" c="dimmed">
-                  {entry.user_id ? entry.user_id.slice(0, 8) : "—"}
+                  {entry.user_email ?? "—"}
                 </Text>
               </Table.Td>
               <Table.Td>

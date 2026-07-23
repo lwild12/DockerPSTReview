@@ -20,6 +20,7 @@ async def test_case_and_custodian_creation_are_audited(client):
     assert "custodian.created" in actions
     # newest first
     assert logs.json()[0]["action"] == "custodian.created"
+    assert all(entry["user_email"] == "admin@example.com" for entry in logs.json())
 
 
 async def test_tag_apply_and_remove_are_audited(client, db_session):
@@ -65,7 +66,7 @@ async def test_member_add_and_remove_are_audited(client):
 
     add_resp = await client.post(
         f"/api/cases/{case_id}/members",
-        json={"user_id": reviewer["id"], "role": "reviewer"},
+        json={"email": reviewer["email"], "role": "reviewer"},
     )
     membership_id = add_resp.json()["id"]
 
@@ -88,7 +89,7 @@ async def test_audit_log_endpoint_requires_admin(client):
 
     await client.post(
         f"/api/cases/{case_id}/members",
-        json={"user_id": reviewer["id"], "role": "reviewer"},
+        json={"email": reviewer["email"], "role": "reviewer"},
     )
 
     async with AsyncClient(transport=transport, base_url="http://test") as reviewer_client:

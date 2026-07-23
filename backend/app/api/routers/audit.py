@@ -8,6 +8,7 @@ from app.auth.dependencies import require_case_admin
 from app.db import get_db
 from app.models.audit import AuditLog
 from app.models.case import CaseMembership
+from app.models.user import User
 from app.schemas.audit import AuditLogRead
 
 router = APIRouter(prefix="/cases/{case_id}/audit-logs", tags=["audit-logs"])
@@ -22,10 +23,19 @@ async def list_audit_logs(
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(
-        select(AuditLog)
+        select(AuditLog, User.email)
+        .outerjoin(User, User.id == AuditLog.user_id)
         .where(AuditLog.case_id == case_id)
         .order_by(AuditLog.created_at.desc())
         .offset((page - 1) * page_size)
         .limit(page_size)
     )
-    return result.scalars().all()
+    return [
+        AuditLogRead.model_validate(
+            {
+                **{c.name: getattr(entry, c.name) for c in AuditLog.__table__.columns},
+                "user_email": email,
+            }
+        )
+        for entry, email in result.all()
+    ]

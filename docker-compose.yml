@@ -46,7 +46,8 @@ services:
       STORAGE_ROOT: /data
       JWT_SECRET: ${JWT_SECRET:-change-me-to-a-long-random-string}
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
-      BACKEND_CORS_ORIGINS: ${BACKEND_CORS_ORIGINS:-http://localhost:5174}
+      BACKEND_CORS_ORIGINS: ${BACKEND_CORS_ORIGINS:-http://localhost}
+      ENABLE_API_DOCS: ${ENABLE_API_DOCS:-false}
     volumes:
       - case_storage:/data
     depends_on:
@@ -70,7 +71,8 @@ services:
       STORAGE_ROOT: /data
       JWT_SECRET: ${JWT_SECRET:-change-me-to-a-long-random-string}
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
-      BACKEND_CORS_ORIGINS: ${BACKEND_CORS_ORIGINS:-http://localhost:5174}
+      BACKEND_CORS_ORIGINS: ${BACKEND_CORS_ORIGINS:-http://localhost}
+      ENABLE_API_DOCS: ${ENABLE_API_DOCS:-false}
     volumes:
       - case_storage:/data
     depends_on:
@@ -89,7 +91,7 @@ services:
     environment:
       VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api}
     ports:
-      - "5174:80"
+      - "80:80"
     depends_on:
       - backend
 

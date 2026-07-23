@@ -87,7 +87,7 @@ async def test_reviewer_can_tag_but_only_admin_can_delete_tag_definition(client,
         reviewer = await register_and_login(reviewer_client, "reviewer@example.com")
         await client.post(
             f"/api/cases/{case_id}/members",
-            json={"user_id": reviewer["id"], "role": "reviewer"},
+            json={"email": reviewer["email"], "role": "reviewer"},
         )
 
         apply_resp = await reviewer_client.post(

@@ -137,6 +137,9 @@ export function ReviewSetDetailPage() {
           <Table.Thead>
             <Table.Tr>
               <Table.Th>Document</Table.Th>
+              <Table.Th>From</Table.Th>
+              <Table.Th>Sent</Table.Th>
+              <Table.Th>Type</Table.Th>
               <Table.Th>Status</Table.Th>
               <Table.Th>Notes</Table.Th>
             </Table.Tr>
@@ -146,8 +149,17 @@ export function ReviewSetDetailPage() {
               <Table.Tr key={d.id}>
                 <Table.Td>
                   <Anchor component={Link} to={`/cases/${caseId}/documents/${d.document_id}`}>
-                    {d.document_id}
+                    {d.document_subject || "(no subject)"}
                   </Anchor>
+                </Table.Td>
+                <Table.Td>{d.document_sender}</Table.Td>
+                <Table.Td>
+                  {d.document_sent_at ? new Date(d.document_sent_at).toLocaleString() : ""}
+                </Table.Td>
+                <Table.Td>
+                  <Badge size="sm" variant="light">
+                    {d.document_doc_type}
+                  </Badge>
                 </Table.Td>
                 <Table.Td>
                   <Select
