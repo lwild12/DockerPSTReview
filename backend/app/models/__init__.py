@@ -1,5 +1,6 @@
 from app.models.audit import AuditLog
 from app.models.case import Case, CaseMembership, CaseRole, Custodian
+from app.models.coding import CodingField, CodingFieldType, DocumentCodingValue
 from app.models.document import DedupStatus, DocType, Document, Thread
 from app.models.export import ExportDocumentBates, ExportJob, ExportStatus, ExportType
 from app.models.importjob import ImportStatus, PSTImportJob
@@ -13,10 +14,13 @@ __all__ = [
     "Case",
     "CaseMembership",
     "CaseRole",
+    "CodingField",
+    "CodingFieldType",
     "Custodian",
     "DedupStatus",
     "DocType",
     "Document",
+    "DocumentCodingValue",
     "DocumentTag",
     "ExportDocumentBates",
     "ExportJob",

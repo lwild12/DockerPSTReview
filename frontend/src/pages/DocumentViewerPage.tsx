@@ -22,6 +22,7 @@ import {
   updateReviewSetDocument,
   type ReviewStatus,
 } from "../api/reviewSets";
+import { CodingForm } from "../components/CodingForm";
 import { PdfViewer } from "../components/PdfViewer";
 import { TagHotkeyBar } from "../components/TagHotkeyBar";
 import { TagPicker } from "../components/TagPicker";
@@ -220,6 +221,7 @@ export function DocumentViewerPage() {
 
           <TagPicker caseId={caseId} documentId={documentId} appliedTags={document.tags} />
           <TagHotkeyBar caseId={caseId} documentId={documentId} appliedTags={document.tags} />
+          <CodingForm caseId={caseId} documentId={documentId} />
 
           {document.ocr_status === "completed" && (
             <Stack gap={4} mt="md">

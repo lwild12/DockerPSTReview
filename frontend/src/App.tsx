@@ -5,6 +5,7 @@ import { useAuth } from "./hooks/useAuth";
 import { AuditLogPage } from "./pages/AuditLogPage";
 import { CaseDetailPage } from "./pages/CaseDetailPage";
 import { CaseListPage } from "./pages/CaseListPage";
+import { CodingFieldsPage } from "./pages/CodingFieldsPage";
 import { DocumentListPage } from "./pages/DocumentListPage";
 import { DocumentViewerPage } from "./pages/DocumentViewerPage";
 import { ExportPage } from "./pages/ExportPage";
@@ -87,6 +88,14 @@ export function App() {
         element={
           <RequireAuth>
             <ReviewSetDetailPage />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/cases/:caseId/coding-fields"
+        element={
+          <RequireAuth>
+            <CodingFieldsPage />
           </RequireAuth>
         }
       />

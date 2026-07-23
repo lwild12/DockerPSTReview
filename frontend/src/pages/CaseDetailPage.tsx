@@ -224,6 +224,9 @@ export function CaseDetailPage() {
           <Button size="xs" variant="subtle" onClick={openMemberModal}>
             Members
           </Button>
+          <Button component={Link} to={`/cases/${caseId}/coding-fields`} size="xs" variant="subtle">
+            Coding fields
+          </Button>
           {isAdmin && (
             <Button component={Link} to={`/cases/${caseId}/audit-log`} size="xs" variant="subtle">
               Audit log
