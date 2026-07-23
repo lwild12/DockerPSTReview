@@ -1,8 +1,10 @@
-import { Anchor, Badge, Container, Grid, Group, Stack, Text, Title } from "@mantine/core";
-import { useQuery } from "@tanstack/react-query";
+import { Anchor, Badge, Button, Container, Grid, Group, Stack, Text, Title } from "@mantine/core";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { documentPdfUrl, getDocument } from "../api/documents";
+import { createRedaction, deleteRedaction, listRedactions } from "../api/redactions";
 import { PdfViewer } from "../components/PdfViewer";
 import { TagPicker } from "../components/TagPicker";
 import { ThreadPanel } from "../components/ThreadPanel";
@@ -10,11 +12,39 @@ import { ThreadPanel } from "../components/ThreadPanel";
 export function DocumentViewerPage() {
   const { caseId = "", documentId = "" } = useParams<{ caseId: string; documentId: string }>();
   const enabled = caseId !== "" && documentId !== "";
+  const queryClient = useQueryClient();
+  const [redactionMode, setRedactionMode] = useState(false);
 
   const { data: document, isLoading } = useQuery({
     queryKey: ["document", caseId, documentId],
     queryFn: () => getDocument(caseId, documentId),
     enabled,
+  });
+
+  const { data: redactions } = useQuery({
+    queryKey: ["redactions", caseId, documentId],
+    queryFn: () => listRedactions(caseId, documentId),
+    enabled,
+  });
+
+  const invalidateRedactions = () =>
+    queryClient.invalidateQueries({ queryKey: ["redactions", caseId, documentId] });
+
+  const createMutation = useMutation({
+    mutationFn: (params: {
+      pageNumber: number;
+      rect: { x: number; y: number; width: number; height: number };
+    }) =>
+      createRedaction(caseId, documentId, {
+        page_number: params.pageNumber,
+        ...params.rect,
+      }),
+    onSuccess: invalidateRedactions,
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (redactionId: string) => deleteRedaction(caseId, documentId, redactionId),
+    onSuccess: invalidateRedactions,
   });
 
   return (
@@ -67,7 +97,31 @@ export function DocumentViewerPage() {
           <Grid mt="lg">
             <Grid.Col span={document.thread_id ? 9 : 12}>
               {document.rendered_pdf_page_count > 0 ? (
-                <PdfViewer url={documentPdfUrl(caseId, documentId)} />
+                <>
+                  <Group justify="flex-end" mb="xs">
+                    <Button
+                      size="xs"
+                      variant={redactionMode ? "filled" : "light"}
+                      color={redactionMode ? "red" : "gray"}
+                      onClick={() => setRedactionMode((v) => !v)}
+                    >
+                      {redactionMode ? "Done redacting" : "Redact"}
+                    </Button>
+                  </Group>
+                  <PdfViewer
+                    url={documentPdfUrl(caseId, documentId)}
+                    redactions={redactions ?? []}
+                    readOnly={!redactionMode}
+                    onCreateRedaction={
+                      redactionMode
+                        ? (pageNumber, rect) => createMutation.mutate({ pageNumber, rect })
+                        : undefined
+                    }
+                    onDeleteRedaction={
+                      redactionMode ? (id) => deleteMutation.mutate(id) : undefined
+                    }
+                  />
+                </>
               ) : (
                 <Text c="dimmed">
                   {document.render_error

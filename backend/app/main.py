@@ -5,7 +5,16 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routers import auth, cases, custodians, documents, import_jobs, review_sets, tags
+from app.api.routers import (
+    auth,
+    cases,
+    custodians,
+    documents,
+    import_jobs,
+    redactions,
+    review_sets,
+    tags,
+)
 from app.config import DEFAULT_JWT_SECRET, get_settings
 
 logger = logging.getLogger("app")
@@ -41,6 +50,7 @@ app.include_router(documents.threads_router, prefix="/api")
 app.include_router(tags.router, prefix="/api")
 app.include_router(tags.document_tags_router, prefix="/api")
 app.include_router(review_sets.router, prefix="/api")
+app.include_router(redactions.router, prefix="/api")
 
 
 @app.get("/healthz")
