@@ -4,8 +4,12 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import { useAuth } from "./hooks/useAuth";
 import { CaseDetailPage } from "./pages/CaseDetailPage";
 import { CaseListPage } from "./pages/CaseListPage";
+import { DocumentListPage } from "./pages/DocumentListPage";
+import { DocumentViewerPage } from "./pages/DocumentViewerPage";
+import { ExportPage } from "./pages/ExportPage";
 import { ImportPage } from "./pages/ImportPage";
 import { LoginPage } from "./pages/LoginPage";
+import { ReviewSetDetailPage, ReviewSetsPage } from "./pages/ReviewSetsPage";
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -48,6 +52,46 @@ export function App() {
         element={
           <RequireAuth>
             <ImportPage />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/cases/:caseId/documents"
+        element={
+          <RequireAuth>
+            <DocumentListPage />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/cases/:caseId/documents/:documentId"
+        element={
+          <RequireAuth>
+            <DocumentViewerPage />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/cases/:caseId/review-sets"
+        element={
+          <RequireAuth>
+            <ReviewSetsPage />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/cases/:caseId/review-sets/:reviewSetId"
+        element={
+          <RequireAuth>
+            <ReviewSetDetailPage />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/cases/:caseId/export"
+        element={
+          <RequireAuth>
+            <ExportPage />
           </RequireAuth>
         }
       />

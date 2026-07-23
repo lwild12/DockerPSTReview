@@ -1,0 +1,114 @@
+import uuid
+
+from httpx import ASGITransport, AsyncClient
+
+from app.main import app
+from app.models.document import DocType, Document
+from tests.conftest import register_and_login
+
+
+async def _setup_case(client):
+    await register_and_login(client, "admin@example.com")
+    case_resp = await client.post("/api/cases", json={"name": "Case A"})
+    return case_resp.json()["id"]
+
+
+async def _seed_document(db_session, case_id) -> Document:
+    document = Document(
+        id=uuid.uuid4(),
+        case_id=uuid.UUID(case_id),
+        doc_type=DocType.email,
+        subject="Test",
+        content_hash=str(uuid.uuid4()),
+    )
+    db_session.add(document)
+    await db_session.commit()
+    await db_session.refresh(document)
+    return document
+
+
+async def test_create_list_update_delete_tag(client):
+    case_id = await _setup_case(client)
+
+    create = await client.post(f"/api/cases/{case_id}/tags", json={"name": "Privileged"})
+    assert create.status_code == 201
+    tag_id = create.json()["id"]
+    assert create.json()["color"] == "#6366f1"
+
+    duplicate = await client.post(f"/api/cases/{case_id}/tags", json={"name": "Privileged"})
+    assert duplicate.status_code == 409
+
+    listed = await client.get(f"/api/cases/{case_id}/tags")
+    assert len(listed.json()) == 1
+
+    updated = await client.patch(f"/api/cases/{case_id}/tags/{tag_id}", json={"color": "#ff0000"})
+    assert updated.status_code == 200
+    assert updated.json()["color"] == "#ff0000"
+    assert updated.json()["name"] == "Privileged"
+
+    deleted = await client.delete(f"/api/cases/{case_id}/tags/{tag_id}")
+    assert deleted.status_code == 204
+
+    listed_after = await client.get(f"/api/cases/{case_id}/tags")
+    assert len(listed_after.json()) == 0
+
+
+async def test_apply_and_remove_tag_on_document(client, db_session):
+    case_id = await _setup_case(client)
+    document = await _seed_document(db_session, case_id)
+    tag_resp = await client.post(f"/api/cases/{case_id}/tags", json={"name": "Hot"})
+    tag_id = tag_resp.json()["id"]
+
+    apply_resp = await client.post(f"/api/cases/{case_id}/documents/{document.id}/tags/{tag_id}")
+    assert apply_resp.status_code == 201
+
+    detail = await client.get(f"/api/cases/{case_id}/documents/{document.id}")
+    assert [t["name"] for t in detail.json()["tags"]] == ["Hot"]
+
+    # applying the same tag twice is idempotent, not an error
+    apply_again = await client.post(f"/api/cases/{case_id}/documents/{document.id}/tags/{tag_id}")
+    assert apply_again.status_code == 201
+
+    remove_resp = await client.delete(f"/api/cases/{case_id}/documents/{document.id}/tags/{tag_id}")
+    assert remove_resp.status_code == 204
+
+    detail_after = await client.get(f"/api/cases/{case_id}/documents/{document.id}")
+    assert detail_after.json()["tags"] == []
+
+
+async def test_reviewer_can_tag_but_only_admin_can_delete_tag_definition(client, db_session):
+    case_id = await _setup_case(client)
+    document = await _seed_document(db_session, case_id)
+    tag_resp = await client.post(f"/api/cases/{case_id}/tags", json={"name": "Confidential"})
+    tag_id = tag_resp.json()["id"]
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as reviewer_client:
+        reviewer = await register_and_login(reviewer_client, "reviewer@example.com")
+        await client.post(
+            f"/api/cases/{case_id}/members",
+            json={"user_id": reviewer["id"], "role": "reviewer"},
+        )
+
+        apply_resp = await reviewer_client.post(
+            f"/api/cases/{case_id}/documents/{document.id}/tags/{tag_id}"
+        )
+        assert apply_resp.status_code == 201
+
+        forbidden_delete = await reviewer_client.delete(f"/api/cases/{case_id}/tags/{tag_id}")
+        assert forbidden_delete.status_code == 403
+
+
+async def test_apply_tag_to_missing_document_or_tag_returns_404(client, db_session):
+    case_id = await _setup_case(client)
+    document = await _seed_document(db_session, case_id)
+    tag_resp = await client.post(f"/api/cases/{case_id}/tags", json={"name": "X"})
+    tag_id = tag_resp.json()["id"]
+
+    missing_doc = await client.post(f"/api/cases/{case_id}/documents/{uuid.uuid4()}/tags/{tag_id}")
+    assert missing_doc.status_code == 404
+
+    missing_tag = await client.post(
+        f"/api/cases/{case_id}/documents/{document.id}/tags/{uuid.uuid4()}"
+    )
+    assert missing_tag.status_code == 404

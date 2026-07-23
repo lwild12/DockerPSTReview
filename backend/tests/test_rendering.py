@@ -37,6 +37,28 @@ def test_render_email_to_pdf_includes_header_and_body():
     assert "See attached." in text
 
 
+def test_render_email_header_labels_do_not_overlap_their_values():
+    # Regression test: the "Subject:" label previously overflowed its fixed-width
+    # box and visually overlapped the subject value next to it.
+    pdf_bytes = render_email_to_pdf(
+        subject="A subject long enough to butt up against the label",
+        sender="alice@example.com",
+        recipients_to=["bob@example.com"],
+        recipients_cc=[],
+        sent_at=None,
+        body_text="body",
+        body_html="",
+    )
+    with fitz.open(stream=pdf_bytes, filetype="pdf") as doc:
+        words = doc[0].get_text("words")
+    label_words = [w for w in words if w[4] == "Subject:"]
+    value_words = [w for w in words if w[4] == "A"]
+    assert label_words and value_words
+    label_x1 = label_words[0][2]
+    value_x0 = value_words[0][0]
+    assert value_x0 >= label_x1, "the subject value starts before the label ends (overlap)"
+
+
 def test_render_email_html_body_is_sanitized_and_blocks_network_fetch():
     pdf_bytes = render_email_to_pdf(
         subject="HTML email",
