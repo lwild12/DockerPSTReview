@@ -13,7 +13,7 @@ logs:
 	docker compose logs -f
 
 migrate:
-	docker compose exec backend alembic upgrade head
+	docker compose run --rm migrate
 
 makemigration:
 	docker compose exec backend alembic revision --autogenerate -m "$(m)"

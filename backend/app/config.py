@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     jwt_secret: str = DEFAULT_JWT_SECRET
     cookie_secure: bool = False
     storage_root: str = "/data"
-    backend_cors_origins: str = "http://localhost:5173"
+    backend_cors_origins: str = "http://localhost:5174"
 
     @property
     def cors_origins(self) -> list[str]:
