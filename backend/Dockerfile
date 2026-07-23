@@ -1,4 +1,4 @@
-FROM python:3.12-slim AS builder
+FROM python:3.12-slim-bookworm AS builder
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential autoconf automake libtool pkg-config python3-dev \
@@ -8,7 +8,7 @@ WORKDIR /wheels
 COPY requirements.txt requirements-dev.txt ./
 RUN pip wheel --no-cache-dir --wheel-dir /wheels/dist -r requirements-dev.txt
 
-FROM python:3.12-slim AS runtime
+FROM python:3.12-slim-bookworm AS runtime
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     pst-utils \
