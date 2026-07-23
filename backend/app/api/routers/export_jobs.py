@@ -14,6 +14,7 @@ from app.models.export import ExportJob, ExportStatus
 from app.models.review import ReviewSet, ReviewSetDocument
 from app.models.user import User
 from app.schemas.export import ExportJobCreate, ExportJobRead
+from app.services.audit import record_audit
 from app.tasks.export_tasks import run_export_task
 
 router = APIRouter(prefix="/cases/{case_id}/export-jobs", tags=["export-jobs"])
@@ -74,6 +75,15 @@ async def create_export_job(
         requested_by_id=user.id,
     )
     db.add(job)
+    record_audit(
+        db,
+        case_id,
+        user.id,
+        "export_job.created",
+        "export_job",
+        str(job.id),
+        {"export_type": job.export_type.value, "document_count": len(document_ids)},
+    )
     await db.commit()
     await db.refresh(job)
 

@@ -63,6 +63,16 @@ export function DocumentTable({
                   render failed
                 </Badge>
               )}
+              {doc.ocr_status === "completed" && (
+                <Badge size="sm" color="blue" variant="light" ml={4}>
+                  OCR'd
+                </Badge>
+              )}
+              {doc.ocr_status === "failed" && (
+                <Badge size="sm" color="red" variant="light" ml={4}>
+                  OCR failed
+                </Badge>
+              )}
             </Table.Td>
             <Table.Td onClick={() => navigate(`/cases/${caseId}/documents/${doc.id}`)}>
               {doc.tags.map((tag) => (

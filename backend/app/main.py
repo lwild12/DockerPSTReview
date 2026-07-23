@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routers import (
+    audit,
     auth,
     cases,
     custodians,
@@ -53,6 +54,7 @@ app.include_router(tags.document_tags_router, prefix="/api")
 app.include_router(review_sets.router, prefix="/api")
 app.include_router(redactions.router, prefix="/api")
 app.include_router(export_jobs.router, prefix="/api")
+app.include_router(audit.router, prefix="/api")
 
 
 @app.get("/healthz")

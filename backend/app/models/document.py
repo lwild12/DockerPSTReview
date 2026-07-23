@@ -2,8 +2,8 @@ import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import BigInteger, DateTime, Enum, ForeignKey, Integer, String, Text
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy import BigInteger, Computed, DateTime, Enum, ForeignKey, Integer, String, Text
+from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
@@ -20,6 +20,12 @@ class DocType(str, enum.Enum):
 class DedupStatus(str, enum.Enum):
     primary = "primary"
     duplicate = "duplicate"
+
+
+class OcrStatus(str, enum.Enum):
+    not_applicable = "not_applicable"
+    completed = "completed"
+    failed = "failed"
 
 
 class Thread(UUIDPKMixin, TimestampMixin, Base):
@@ -71,6 +77,17 @@ class Document(UUIDPKMixin, TimestampMixin, Base):
     body_html: Mapped[str] = mapped_column(Text, default="")
     structured_metadata: Mapped[dict] = mapped_column(JSONB, default=dict)
 
+    # Populated by Postgres on write; never assigned in Python.
+    search_vector: Mapped[str] = mapped_column(
+        TSVECTOR,
+        Computed(
+            "to_tsvector('english', coalesce(subject, '') || ' ' || coalesce(sender, '') "
+            "|| ' ' || coalesce(body_text, '') || ' ' || coalesce(ocr_text, ''))",
+            persisted=True,
+        ),
+        nullable=True,
+    )
+
     pst_folder_path: Mapped[str] = mapped_column(String(1000), default="")
     native_file_path: Mapped[str] = mapped_column(String(1000), default="")
     mime_type: Mapped[str] = mapped_column(String(255), default="")
@@ -79,6 +96,12 @@ class Document(UUIDPKMixin, TimestampMixin, Base):
     rendered_pdf_path: Mapped[str] = mapped_column(String(1000), default="")
     rendered_pdf_page_count: Mapped[int] = mapped_column(Integer, default=0)
     render_error: Mapped[str] = mapped_column(Text, default="")
+
+    ocr_text: Mapped[str] = mapped_column(Text, default="")
+    ocr_status: Mapped[OcrStatus] = mapped_column(
+        Enum(OcrStatus, name="ocr_status"), default=OcrStatus.not_applicable
+    )
+    ocr_error: Mapped[str] = mapped_column(Text, default="")
 
     content_hash: Mapped[str] = mapped_column(String(64), default="", index=True)
     dedup_status: Mapped[DedupStatus] = mapped_column(

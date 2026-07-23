@@ -12,6 +12,7 @@ from app.models.document import Document
 from app.models.redaction import Redaction
 from app.models.user import User
 from app.schemas.redaction import RedactionCreate, RedactionRead, RedactionUpdate
+from app.services.audit import record_audit
 
 router = APIRouter(
     prefix="/cases/{case_id}/documents/{document_id}/redactions", tags=["redactions"]
@@ -71,6 +72,16 @@ async def create_redaction(
         created_by_id=user.id,
     )
     db.add(redaction)
+    await db.flush()
+    record_audit(
+        db,
+        case_id,
+        user.id,
+        "redaction.created",
+        "document",
+        str(document_id),
+        {"redaction_id": str(redaction.id), "page_number": redaction.page_number},
+    )
     await db.commit()
     await db.refresh(redaction)
     return redaction
@@ -83,6 +94,7 @@ async def update_redaction(
     redaction_id: uuid.UUID,
     payload: RedactionUpdate,
     _membership: CaseMembership = Depends(require_case_reviewer_or_admin),
+    user: User = Depends(current_active_user),
     db: AsyncSession = Depends(get_db),
 ):
     await _get_document_or_404(case_id, document_id, db)
@@ -95,6 +107,15 @@ async def update_redaction(
         if value is not None:
             setattr(redaction, field, value)
 
+    record_audit(
+        db,
+        case_id,
+        user.id,
+        "redaction.updated",
+        "document",
+        str(document_id),
+        {"redaction_id": str(redaction.id)},
+    )
     await db.commit()
     await db.refresh(redaction)
     return redaction
@@ -106,11 +127,21 @@ async def delete_redaction(
     document_id: uuid.UUID,
     redaction_id: uuid.UUID,
     _membership: CaseMembership = Depends(require_case_reviewer_or_admin),
+    user: User = Depends(current_active_user),
     db: AsyncSession = Depends(get_db),
 ):
     await _get_document_or_404(case_id, document_id, db)
     redaction = await db.get(Redaction, redaction_id)
     if redaction is None or redaction.document_id != document_id:
         raise HTTPException(status_code=404, detail="Redaction not found")
+    record_audit(
+        db,
+        case_id,
+        user.id,
+        "redaction.deleted",
+        "document",
+        str(document_id),
+        {"redaction_id": str(redaction.id), "page_number": redaction.page_number},
+    )
     await db.delete(redaction)
     await db.commit()

@@ -3,7 +3,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict
 
-from app.models.document import DedupStatus, DocType
+from app.models.document import DedupStatus, DocType, OcrStatus
 from app.schemas.tag import TagRead
 
 
@@ -21,6 +21,7 @@ class DocumentListItem(BaseModel):
     dedup_status: DedupStatus
     rendered_pdf_page_count: int
     render_error: str
+    ocr_status: OcrStatus
     tags: list[TagRead] = []
 
 
@@ -55,6 +56,9 @@ class DocumentDetail(BaseModel):
     dedup_status: DedupStatus
     duplicate_of_id: uuid.UUID | None
     created_at: datetime
+    ocr_text: str
+    ocr_status: OcrStatus
+    ocr_error: str
     tags: list[TagRead] = []
 
 

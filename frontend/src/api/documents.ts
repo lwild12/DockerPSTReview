@@ -3,6 +3,7 @@ import type { TagRead } from "./tags";
 
 export type DocType = "email" | "attachment" | "calendar" | "contact";
 export type DedupStatus = "primary" | "duplicate";
+export type OcrStatus = "not_applicable" | "completed" | "failed";
 
 export interface DocumentListItem {
   id: string;
@@ -16,6 +17,7 @@ export interface DocumentListItem {
   dedup_status: DedupStatus;
   rendered_pdf_page_count: number;
   render_error: string;
+  ocr_status: OcrStatus;
   tags: TagRead[];
 }
 
@@ -37,6 +39,8 @@ export interface DocumentDetail extends DocumentListItem {
   content_hash: string;
   duplicate_of_id: string | null;
   created_at: string;
+  ocr_text: string;
+  ocr_error: string;
 }
 
 export interface ThreadSibling {

@@ -16,6 +16,7 @@ from app.models.document import Document
 from app.models.tag import DocumentTag, Tag
 from app.models.user import User
 from app.schemas.tag import TagCreate, TagRead, TagUpdate
+from app.services.audit import record_audit
 
 router = APIRouter(prefix="/cases/{case_id}/tags", tags=["tags"])
 document_tags_router = APIRouter(
@@ -52,6 +53,8 @@ async def create_tag(
         created_by_id=user.id,
     )
     db.add(tag)
+    await db.flush()
+    record_audit(db, case_id, user.id, "tag.created", "tag", str(tag.id), {"name": tag.name})
     await db.commit()
     await db.refresh(tag)
     return tag
@@ -63,6 +66,7 @@ async def update_tag(
     tag_id: uuid.UUID,
     payload: TagUpdate,
     _membership: CaseMembership = Depends(require_case_admin),
+    user: User = Depends(current_active_user),
     db: AsyncSession = Depends(get_db),
 ):
     tag = await db.get(Tag, tag_id)
@@ -72,6 +76,7 @@ async def update_tag(
         tag.name = payload.name
     if payload.color is not None:
         tag.color = payload.color
+    record_audit(db, case_id, user.id, "tag.updated", "tag", str(tag.id), {"name": tag.name})
     await db.commit()
     await db.refresh(tag)
     return tag
@@ -82,11 +87,13 @@ async def delete_tag(
     case_id: uuid.UUID,
     tag_id: uuid.UUID,
     _membership: CaseMembership = Depends(require_case_admin),
+    user: User = Depends(current_active_user),
     db: AsyncSession = Depends(get_db),
 ):
     tag = await db.get(Tag, tag_id)
     if tag is None or tag.case_id != case_id:
         raise HTTPException(status_code=404, detail="Tag not found")
+    record_audit(db, case_id, user.id, "tag.deleted", "tag", str(tag.id), {"name": tag.name})
     await db.delete(tag)
     await db.commit()
 
@@ -114,6 +121,15 @@ async def apply_tag(
     )
     if existing.scalar_one_or_none() is None:
         db.add(DocumentTag(document_id=document_id, tag_id=tag_id, tagged_by_id=user.id))
+        record_audit(
+            db,
+            case_id,
+            user.id,
+            "tag.applied",
+            "document",
+            str(document_id),
+            {"tag_id": str(tag_id)},
+        )
         await db.commit()
     return tag
 
@@ -124,6 +140,7 @@ async def remove_tag(
     document_id: uuid.UUID,
     tag_id: uuid.UUID,
     _membership: CaseMembership = Depends(require_case_reviewer_or_admin),
+    user: User = Depends(current_active_user),
     db: AsyncSession = Depends(get_db),
 ):
     document = await db.get(Document, document_id)
@@ -131,5 +148,14 @@ async def remove_tag(
         raise HTTPException(status_code=404, detail="Document not found")
     link = await db.get(DocumentTag, (document_id, tag_id))
     if link is not None:
+        record_audit(
+            db,
+            case_id,
+            user.id,
+            "tag.removed",
+            "document",
+            str(document_id),
+            {"tag_id": str(tag_id)},
+        )
         await db.delete(link)
         await db.commit()

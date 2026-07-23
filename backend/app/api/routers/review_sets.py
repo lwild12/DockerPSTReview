@@ -19,6 +19,7 @@ from app.schemas.review import (
     ReviewSetDocumentUpdate,
     ReviewSetRead,
 )
+from app.services.audit import record_audit
 
 router = APIRouter(prefix="/cases/{case_id}/review-sets", tags=["review-sets"])
 
@@ -51,6 +52,16 @@ async def create_review_set(
         created_by_id=user.id,
     )
     db.add(review_set)
+    await db.flush()
+    record_audit(
+        db,
+        case_id,
+        user.id,
+        "review_set.created",
+        "review_set",
+        str(review_set.id),
+        {"name": review_set.name},
+    )
     await db.commit()
     await db.refresh(review_set)
     return review_set
@@ -95,6 +106,7 @@ async def add_documents_to_review_set(
     review_set_id: uuid.UUID,
     payload: ReviewSetAddDocuments,
     _membership: CaseMembership = Depends(require_case_reviewer_or_admin),
+    user: User = Depends(current_active_user),
     db: AsyncSession = Depends(get_db),
 ):
     review_set = await db.get(ReviewSet, review_set_id)
@@ -125,6 +137,16 @@ async def add_documents_to_review_set(
         db.add(link)
         created.append(link)
 
+    if created:
+        record_audit(
+            db,
+            case_id,
+            user.id,
+            "review_set.documents_added",
+            "review_set",
+            str(review_set_id),
+            {"document_ids": [str(link.document_id) for link in created]},
+        )
     await db.commit()
     for link in created:
         await db.refresh(link)
@@ -164,6 +186,15 @@ async def update_review_set_document(
     if payload.notes is not None:
         link.notes = payload.notes
 
+    record_audit(
+        db,
+        case_id,
+        user.id,
+        "review_set_document.updated",
+        "document",
+        str(document_id),
+        {"review_set_id": str(review_set_id), "review_status": link.review_status.value},
+    )
     await db.commit()
     await db.refresh(link)
     return link

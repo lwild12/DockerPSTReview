@@ -10,6 +10,7 @@ from app.db import get_db
 from app.models.case import Case, CaseMembership, CaseRole
 from app.models.user import User
 from app.schemas.case import CaseCreate, CaseMemberCreate, CaseMemberRead, CaseRead
+from app.services.audit import record_audit
 
 router = APIRouter(prefix="/cases", tags=["cases"])
 
@@ -44,6 +45,7 @@ async def create_case(
     await db.flush()
     membership = CaseMembership(case_id=case.id, user_id=user.id, role=CaseRole.admin)
     db.add(membership)
+    record_audit(db, case.id, user.id, "case.created", "case", str(case.id))
     await db.commit()
     await db.refresh(case)
     item = CaseRead.model_validate(case)
@@ -82,6 +84,7 @@ async def add_member(
     case_id: uuid.UUID,
     payload: CaseMemberCreate,
     _membership: CaseMembership = Depends(require_case_admin),
+    user: User = Depends(current_active_user),
     db: AsyncSession = Depends(get_db),
 ):
     existing = await db.execute(
@@ -93,6 +96,16 @@ async def add_member(
         raise HTTPException(status_code=409, detail="User is already a member of this case")
     membership = CaseMembership(case_id=case_id, user_id=payload.user_id, role=payload.role)
     db.add(membership)
+    await db.flush()
+    record_audit(
+        db,
+        case_id,
+        user.id,
+        "member.added",
+        "case_membership",
+        str(membership.id),
+        {"user_id": str(payload.user_id), "role": payload.role.value},
+    )
     await db.commit()
     await db.refresh(membership)
     return membership
@@ -103,10 +116,20 @@ async def remove_member(
     case_id: uuid.UUID,
     membership_id: uuid.UUID,
     _membership: CaseMembership = Depends(require_case_admin),
+    user: User = Depends(current_active_user),
     db: AsyncSession = Depends(get_db),
 ):
     target = await db.get(CaseMembership, membership_id)
     if target is None or target.case_id != case_id:
         raise HTTPException(status_code=404, detail="Membership not found")
+    record_audit(
+        db,
+        case_id,
+        user.id,
+        "member.removed",
+        "case_membership",
+        str(membership_id),
+        {"user_id": str(target.user_id), "role": target.role.value},
+    )
     await db.delete(target)
     await db.commit()

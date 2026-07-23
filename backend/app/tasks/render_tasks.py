@@ -11,8 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from app.celery_app import celery_app
 from app.config import get_settings
-from app.models.document import DedupStatus, DocType, Document
-from app.services import storage
+from app.models.document import DedupStatus, DocType, Document, OcrStatus
+from app.services import ocr, storage
 from app.services.rendering import (
     UnrenderableError,
     email_renderer,
@@ -94,6 +94,15 @@ async def render_document(document_id: uuid.UUID, db: AsyncSession) -> None:
     try:
         with fitz.open(stream=pdf_bytes, filetype="pdf") as opened:
             page_count = opened.page_count
+            if document.doc_type == DocType.attachment and not ocr.has_extractable_text(opened):
+                try:
+                    document.ocr_text = await asyncio.to_thread(ocr.ocr_pdf, opened)
+                    document.ocr_status = OcrStatus.completed
+                    document.ocr_error = ""
+                except ocr.OcrError as exc:
+                    document.ocr_status = OcrStatus.failed
+                    document.ocr_error = str(exc)[:2000]
+                    logger.warning("OCR failed for document %s", document_id, exc_info=True)
     except Exception:
         logger.warning("Rendered PDF for %s failed to re-open for page count", document_id)
 
