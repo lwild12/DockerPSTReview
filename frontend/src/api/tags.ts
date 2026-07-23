@@ -43,3 +43,14 @@ export async function removeTag(
     method: "DELETE",
   });
 }
+
+export async function applyTagBulk(
+  caseId: string,
+  tagId: string,
+  documentIds: string[],
+): Promise<{ tagged_count: number }> {
+  return apiFetch<{ tagged_count: number }>(`/cases/${caseId}/tags/${tagId}/apply-bulk`, {
+    method: "POST",
+    body: JSON.stringify({ document_ids: documentIds }),
+  });
+}

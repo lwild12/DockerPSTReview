@@ -9,19 +9,32 @@ export function DocumentTable({
   documents,
   selectedIds,
   onToggleSelect,
+  onToggleSelectAll,
 }: {
   documents: DocumentListItem[];
   selectedIds: Set<string>;
   onToggleSelect: (documentId: string) => void;
+  onToggleSelectAll?: (checked: boolean) => void;
 }) {
   const navigate = useNavigate();
   const { caseId } = useParams<{ caseId: string }>();
+
+  const allSelected = documents.length > 0 && documents.every((d) => selectedIds.has(d.id));
+  const someSelected = documents.some((d) => selectedIds.has(d.id));
 
   return (
     <Table striped highlightOnHover>
       <Table.Thead>
         <Table.Tr>
-          <Table.Th w={36} />
+          <Table.Th w={36}>
+            {onToggleSelectAll && (
+              <Checkbox
+                checked={allSelected}
+                indeterminate={someSelected && !allSelected}
+                onChange={(e) => onToggleSelectAll(e.currentTarget.checked)}
+              />
+            )}
+          </Table.Th>
           <Table.Th>Subject</Table.Th>
           <Table.Th>From</Table.Th>
           <Table.Th>Sent</Table.Th>

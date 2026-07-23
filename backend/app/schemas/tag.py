@@ -14,6 +14,10 @@ class TagUpdate(BaseModel):
     color: str | None = None
 
 
+class TagBulkApply(BaseModel):
+    document_ids: list[uuid.UUID]
+
+
 class TagRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

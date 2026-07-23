@@ -63,6 +63,21 @@ export async function addDocumentsToReviewSet(
   });
 }
 
+export async function bulkUpdateReviewStatus(
+  caseId: string,
+  reviewSetId: string,
+  documentIds: string[],
+  reviewStatus: ReviewStatus,
+): Promise<ReviewSetDocument[]> {
+  return apiFetch<ReviewSetDocument[]>(
+    `/cases/${caseId}/review-sets/${reviewSetId}/documents/bulk-review-status`,
+    {
+      method: "POST",
+      body: JSON.stringify({ document_ids: documentIds, review_status: reviewStatus }),
+    },
+  );
+}
+
 export async function updateReviewSetDocument(
   caseId: string,
   reviewSetId: string,

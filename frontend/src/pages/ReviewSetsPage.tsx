@@ -3,6 +3,7 @@ import {
   Badge,
   Button,
   Card,
+  Checkbox,
   Container,
   Group,
   Modal,
@@ -19,6 +20,7 @@ import { useState, type FormEvent } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import {
+  bulkUpdateReviewStatus,
   createReviewSet,
   listReviewSetDocuments,
   listReviewSets,
@@ -108,6 +110,9 @@ export function ReviewSetDetailPage() {
   const queryClient = useQueryClient();
   const enabled = caseId !== "" && reviewSetId !== "";
 
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkStatusChoice, setBulkStatusChoice] = useState<string | null>(null);
+
   const { data: documents, isLoading } = useQuery({
     queryKey: ["review-set-documents", caseId, reviewSetId],
     queryFn: () => listReviewSetDocuments(caseId, reviewSetId),
@@ -122,20 +127,66 @@ export function ReviewSetDetailPage() {
     },
   });
 
+  const bulkStatusMutation = useMutation({
+    mutationFn: (status: ReviewStatus) =>
+      bulkUpdateReviewStatus(caseId, reviewSetId, Array.from(selectedIds), status),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["review-set-documents", caseId, reviewSetId] });
+      setSelectedIds(new Set());
+      setBulkStatusChoice(null);
+    },
+  });
+
+  const toggleSelect = (documentId: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(documentId)) next.delete(documentId);
+      else next.add(documentId);
+      return next;
+    });
+  };
+
+  const allSelected = (documents ?? []).length > 0 && (documents ?? []).every((d) => selectedIds.has(d.document_id));
+  const someSelected = (documents ?? []).some((d) => selectedIds.has(d.document_id));
+  const toggleSelectAll = (checked: boolean) => {
+    setSelectedIds(checked ? new Set((documents ?? []).map((d) => d.document_id)) : new Set());
+  };
+
   return (
     <Container size="xl" py="xl">
       <Anchor component={Link} to={`/cases/${caseId}/review-sets`} size="sm">
         ← Back to review sets
       </Anchor>
-      <Title order={2} mt="sm" mb="lg">
-        Review set documents
-      </Title>
+      <Group justify="space-between" mt="sm" mb="lg">
+        <Title order={2}>Review set documents</Title>
+        {selectedIds.size > 0 && (
+          <Select
+            placeholder={`Set status for ${selectedIds.size} selected...`}
+            size="sm"
+            w={220}
+            data={["unreviewed", "in_review", "reviewed", "flagged"]}
+            value={bulkStatusChoice}
+            onChange={(value) => {
+              setBulkStatusChoice(value);
+              if (value) bulkStatusMutation.mutate(value as ReviewStatus);
+            }}
+            disabled={bulkStatusMutation.isPending}
+          />
+        )}
+      </Group>
 
       {isLoading && <Text>Loading...</Text>}
       {documents && documents.length > 0 && (
         <Table>
           <Table.Thead>
             <Table.Tr>
+              <Table.Th w={36}>
+                <Checkbox
+                  checked={allSelected}
+                  indeterminate={someSelected && !allSelected}
+                  onChange={(e) => toggleSelectAll(e.currentTarget.checked)}
+                />
+              </Table.Th>
               <Table.Th>Document</Table.Th>
               <Table.Th>From</Table.Th>
               <Table.Th>Sent</Table.Th>
@@ -147,6 +198,12 @@ export function ReviewSetDetailPage() {
           <Table.Tbody>
             {documents.map((d) => (
               <Table.Tr key={d.id}>
+                <Table.Td>
+                  <Checkbox
+                    checked={selectedIds.has(d.document_id)}
+                    onChange={() => toggleSelect(d.document_id)}
+                  />
+                </Table.Td>
                 <Table.Td>
                   <Anchor
                     component={Link}
