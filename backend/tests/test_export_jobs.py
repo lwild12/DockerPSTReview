@@ -144,7 +144,9 @@ async def test_next_bates_number_defaults_to_one_then_continues_after_a_complete
     assert after.json()["next_bates_number"] > 1
 
     # a different prefix in the same case is an independent sequence
-    other_prefix = await client.get(f"/api/cases/{case_id}/export-jobs/next-bates-number?prefix=XYZ")
+    other_prefix = await client.get(
+        f"/api/cases/{case_id}/export-jobs/next-bates-number?prefix=XYZ"
+    )
     assert other_prefix.json() == {"next_bates_number": 1}
 
 

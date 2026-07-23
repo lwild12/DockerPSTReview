@@ -15,6 +15,7 @@ from app.schemas.admin import (
     SystemSettingsRead,
     SystemSettingsUpdate,
 )
+from app.services.encryption import encrypt
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -70,12 +71,26 @@ async def get_or_create_system_settings(db: AsyncSession) -> SystemSettings:
     return row
 
 
+def _to_settings_read(row: SystemSettings) -> SystemSettingsRead:
+    return SystemSettingsRead(
+        enable_api_docs=row.enable_api_docs,
+        cookie_secure=row.cookie_secure,
+        oidc_enabled=row.oidc_enabled,
+        oidc_issuer_url=row.oidc_issuer_url,
+        oidc_client_id=row.oidc_client_id,
+        oidc_client_secret_set=bool(row.oidc_client_secret_encrypted),
+        oidc_display_name=row.oidc_display_name,
+        updated_at=row.updated_at,
+        updated_by_id=row.updated_by_id,
+    )
+
+
 @router.get("/settings", response_model=SystemSettingsRead)
 async def get_system_settings(
     _superuser: User = Depends(current_superuser),
     db: AsyncSession = Depends(get_db),
 ):
-    return await get_or_create_system_settings(db)
+    return _to_settings_read(await get_or_create_system_settings(db))
 
 
 @router.patch("/settings", response_model=SystemSettingsRead)
@@ -89,7 +104,27 @@ async def update_system_settings(
         row.enable_api_docs = payload.enable_api_docs
     if payload.cookie_secure is not None:
         row.cookie_secure = payload.cookie_secure
+    if payload.oidc_issuer_url is not None:
+        row.oidc_issuer_url = payload.oidc_issuer_url
+    if payload.oidc_client_id is not None:
+        row.oidc_client_id = payload.oidc_client_id
+    if payload.oidc_display_name is not None:
+        row.oidc_display_name = payload.oidc_display_name
+    if payload.oidc_client_secret is not None:
+        row.oidc_client_secret_encrypted = (
+            encrypt(payload.oidc_client_secret) if payload.oidc_client_secret else ""
+        )
+    if payload.oidc_enabled is not None:
+        if payload.oidc_enabled and not (
+            row.oidc_issuer_url and row.oidc_client_id and row.oidc_client_secret_encrypted
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail="Set an issuer URL, client ID, and client secret before enabling OIDC",
+            )
+        row.oidc_enabled = payload.oidc_enabled
+
     row.updated_by_id = current.id
     await db.commit()
     await db.refresh(row)
-    return row
+    return _to_settings_read(row)

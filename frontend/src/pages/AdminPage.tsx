@@ -1,9 +1,127 @@
-import { Anchor, Badge, Button, Checkbox, Container, Group, Stack, Table, Text, Title } from "@mantine/core";
+import {
+  Anchor,
+  Badge,
+  Button,
+  Checkbox,
+  Code,
+  Container,
+  Group,
+  PasswordInput,
+  Stack,
+  Table,
+  Text,
+  TextInput,
+  Title,
+} from "@mantine/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
-import { listAdminUsers, getSystemSettings, updateAdminUser, updateSystemSettings } from "../api/admin";
+import {
+  listAdminUsers,
+  getSystemSettings,
+  updateAdminUser,
+  updateSystemSettings,
+  type SystemSettings,
+} from "../api/admin";
 import { useAuth } from "../hooks/useAuth";
+
+function OidcSettings({ settings }: { settings: SystemSettings }) {
+  const queryClient = useQueryClient();
+  const [issuerUrl, setIssuerUrl] = useState(settings.oidc_issuer_url);
+  const [clientId, setClientId] = useState(settings.oidc_client_id);
+  const [clientSecret, setClientSecret] = useState("");
+  const [displayName, setDisplayName] = useState(settings.oidc_display_name);
+  const [initialized, setInitialized] = useState(false);
+
+  useEffect(() => {
+    if (initialized) return;
+    setIssuerUrl(settings.oidc_issuer_url);
+    setClientId(settings.oidc_client_id);
+    setDisplayName(settings.oidc_display_name);
+    setInitialized(true);
+  }, [settings, initialized]);
+
+  const saveMutation = useMutation({
+    mutationFn: () =>
+      updateSystemSettings({
+        oidc_issuer_url: issuerUrl,
+        oidc_client_id: clientId,
+        oidc_display_name: displayName,
+        ...(clientSecret ? { oidc_client_secret: clientSecret } : {}),
+      }),
+    onSuccess: () => {
+      setClientSecret("");
+      queryClient.invalidateQueries({ queryKey: ["admin-settings"] });
+    },
+  });
+
+  const toggleEnabledMutation = useMutation({
+    mutationFn: (enabled: boolean) => updateSystemSettings({ oidc_enabled: enabled }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["admin-settings"] }),
+  });
+
+  const callbackUrl =
+    typeof window !== "undefined" ? `${window.location.origin}/api/auth/oidc/callback` : "";
+
+  return (
+    <Stack gap="sm" maw={520}>
+      <Text size="sm" c="dimmed">
+        Register this redirect URI with your identity provider:
+      </Text>
+      <Code block fz="xs">
+        {callbackUrl}
+      </Code>
+      <TextInput
+        label="Issuer URL"
+        placeholder="https://your-idp.example.com"
+        value={issuerUrl}
+        onChange={(e) => setIssuerUrl(e.currentTarget.value)}
+      />
+      <TextInput
+        label="Client ID"
+        value={clientId}
+        onChange={(e) => setClientId(e.currentTarget.value)}
+      />
+      <PasswordInput
+        label="Client secret"
+        placeholder={settings.oidc_client_secret_set ? "•••••••• (configured — leave blank to keep)" : "Not set"}
+        value={clientSecret}
+        onChange={(e) => setClientSecret(e.currentTarget.value)}
+      />
+      <TextInput
+        label="Button label"
+        description='Shown on the login page as "Sign in with ..."'
+        value={displayName}
+        onChange={(e) => setDisplayName(e.currentTarget.value)}
+      />
+      <Button
+        variant="light"
+        loading={saveMutation.isPending}
+        onClick={() => saveMutation.mutate()}
+      >
+        Save OIDC settings
+      </Button>
+      {saveMutation.isError && (
+        <Text c="red" size="sm">
+          Couldn't save — check the values and try again.
+        </Text>
+      )}
+      <Checkbox
+        label="Enable OIDC login"
+        description="Requires an issuer URL, client ID, and client secret to already be saved."
+        checked={settings.oidc_enabled}
+        onChange={(e) => toggleEnabledMutation.mutate(e.currentTarget.checked)}
+      />
+      {toggleEnabledMutation.isError && (
+        <Text c="red" size="sm">
+          Couldn't enable OIDC — make sure the issuer URL, client ID, and client secret are all
+          saved first.
+        </Text>
+      )}
+    </Stack>
+  );
+}
 
 export function AdminPage() {
   const { user } = useAuth();
@@ -140,6 +258,11 @@ export function AdminPage() {
           />
         </Stack>
       )}
+
+      <Title order={4} mt="xl" mb="sm">
+        OIDC login
+      </Title>
+      {settings && <OidcSettings settings={settings} />}
     </Container>
   );
 }

@@ -67,7 +67,15 @@ async def create_coding_field(
     )
     db.add(field)
     await db.flush()
-    record_audit(db, case_id, user.id, "coding_field.created", "coding_field", str(field.id), {"name": field.name})
+    record_audit(
+        db,
+        case_id,
+        user.id,
+        "coding_field.created",
+        "coding_field",
+        str(field.id),
+        {"name": field.name},
+    )
     await db.commit()
     await db.refresh(field)
     return field
@@ -91,7 +99,15 @@ async def update_coding_field(
         if not payload.options:
             raise HTTPException(status_code=422, detail="A coding field needs at least one option")
         field.options = payload.options
-    record_audit(db, case_id, user.id, "coding_field.updated", "coding_field", str(field.id), {"name": field.name})
+    record_audit(
+        db,
+        case_id,
+        user.id,
+        "coding_field.updated",
+        "coding_field",
+        str(field.id),
+        {"name": field.name},
+    )
     await db.commit()
     await db.refresh(field)
     return field
@@ -108,7 +124,15 @@ async def delete_coding_field(
     field = await db.get(CodingField, field_id)
     if field is None or field.case_id != case_id:
         raise HTTPException(status_code=404, detail="Coding field not found")
-    record_audit(db, case_id, user.id, "coding_field.deleted", "coding_field", str(field.id), {"name": field.name})
+    record_audit(
+        db,
+        case_id,
+        user.id,
+        "coding_field.deleted",
+        "coding_field",
+        str(field.id),
+        {"name": field.name},
+    )
     await db.delete(field)
     await db.commit()
 
@@ -149,7 +173,9 @@ async def set_document_coding_value(
     values = list(dict.fromkeys(payload.values))
     invalid = [v for v in values if v not in field.options]
     if invalid:
-        raise HTTPException(status_code=422, detail=f"Not a valid option for this field: {invalid[0]}")
+        raise HTTPException(
+            status_code=422, detail=f"Not a valid option for this field: {invalid[0]}"
+        )
     if field.field_type == CodingFieldType.single_select and len(values) > 1:
         raise HTTPException(status_code=422, detail="This field only allows a single value")
 

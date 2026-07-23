@@ -32,7 +32,11 @@ async def test_create_list_update_delete_coding_field(client):
 
     create = await client.post(
         f"/api/cases/{case_id}/coding-fields",
-        json={"name": "Responsiveness", "field_type": "single_select", "options": ["Responsive", "Not responsive"]},
+        json={
+            "name": "Responsiveness",
+            "field_type": "single_select",
+            "options": ["Responsive", "Not responsive"],
+        },
     )
     assert create.status_code == 201
     field_id = create.json()["id"]
@@ -72,7 +76,11 @@ async def test_set_single_select_coding_value_replaces_previous(client, db_sessi
     document = await _seed_document(db_session, case_id)
     field_resp = await client.post(
         f"/api/cases/{case_id}/coding-fields",
-        json={"name": "Confidentiality", "field_type": "single_select", "options": ["Public", "Confidential"]},
+        json={
+            "name": "Confidentiality",
+            "field_type": "single_select",
+            "options": ["Public", "Confidential"],
+        },
     )
     field_id = field_resp.json()["id"]
 
@@ -105,7 +113,11 @@ async def test_set_multi_select_coding_value_allows_multiple(client, db_session)
     document = await _seed_document(db_session, case_id)
     field_resp = await client.post(
         f"/api/cases/{case_id}/coding-fields",
-        json={"name": "Issues", "field_type": "multi_select", "options": ["Contract", "IP", "Employment"]},
+        json={
+            "name": "Issues",
+            "field_type": "multi_select",
+            "options": ["Contract", "IP", "Employment"],
+        },
     )
     field_id = field_resp.json()["id"]
 
@@ -128,7 +140,11 @@ async def test_reviewer_can_set_values_but_only_admin_manages_field_definitions(
     document = await _seed_document(db_session, case_id)
     field_resp = await client.post(
         f"/api/cases/{case_id}/coding-fields",
-        json={"name": "Privilege", "field_type": "single_select", "options": ["Privileged", "Not privileged"]},
+        json={
+            "name": "Privilege",
+            "field_type": "single_select",
+            "options": ["Privileged", "Not privileged"],
+        },
     )
     field_id = field_resp.json()["id"]
 

@@ -12,8 +12,23 @@ export interface AdminUser {
 export interface SystemSettings {
   enable_api_docs: boolean;
   cookie_secure: boolean;
+  oidc_enabled: boolean;
+  oidc_issuer_url: string;
+  oidc_client_id: string;
+  oidc_client_secret_set: boolean;
+  oidc_display_name: string;
   updated_at: string;
   updated_by_id: string | null;
+}
+
+export interface SystemSettingsUpdate {
+  enable_api_docs?: boolean;
+  cookie_secure?: boolean;
+  oidc_enabled?: boolean;
+  oidc_issuer_url?: string;
+  oidc_client_id?: string;
+  oidc_client_secret?: string;
+  oidc_display_name?: string;
 }
 
 export async function listAdminUsers(): Promise<AdminUser[]> {
@@ -34,10 +49,9 @@ export async function getSystemSettings(): Promise<SystemSettings> {
   return apiFetch<SystemSettings>("/admin/settings");
 }
 
-export async function updateSystemSettings(payload: {
-  enable_api_docs?: boolean;
-  cookie_secure?: boolean;
-}): Promise<SystemSettings> {
+export async function updateSystemSettings(
+  payload: SystemSettingsUpdate,
+): Promise<SystemSettings> {
   return apiFetch<SystemSettings>("/admin/settings", {
     method: "PATCH",
     body: JSON.stringify(payload),

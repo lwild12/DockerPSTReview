@@ -19,3 +19,5 @@ nh3==0.2.20
 python-multipart==0.0.20
 psycopg2-binary==2.9.10
 pytesseract==0.3.13
+httpx==0.28.1
+cryptography==49.0.0

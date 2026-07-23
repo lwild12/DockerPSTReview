@@ -156,7 +156,9 @@ async def delete_redaction(
     await db.commit()
 
 
-async def _fetch_case_redaction_log(case_id: uuid.UUID, db: AsyncSession) -> list[RedactionLogEntry]:
+async def _fetch_case_redaction_log(
+    case_id: uuid.UUID, db: AsyncSession
+) -> list[RedactionLogEntry]:
     result = await db.execute(
         select(Redaction, Document.subject, Document.sender, User.email)
         .join(Document, Document.id == Redaction.document_id)
