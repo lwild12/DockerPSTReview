@@ -75,7 +75,7 @@ Expected output ends with something like `Running upgrade ... -> ..., add ocr fi
 
 ## 6. Open the app
 
-Go to **http://localhost:5173** in your browser. You'll land on a login page. There is no sign-up button in the UI yet — the first account has to be created through the API directly, once, as follows.
+Go to **http://localhost:5174** in your browser. You'll land on a login page. There is no sign-up button in the UI yet — the first account has to be created through the API directly, once, as follows.
 
 ### Create your first account
 
@@ -101,7 +101,7 @@ curl -X POST http://localhost:8000/api/auth/register \
 ```
 )
 
-Now go back to **http://localhost:5173/login** and sign in with that email and password.
+Now go back to **http://localhost:5174/login** and sign in with that email and password.
 
 ## 7. Your first case, start to finish
 
@@ -151,8 +151,8 @@ make migrate
 - **`docker compose ps` shows a service restarting/unhealthy** — check its logs: `docker compose logs backend` (or `worker`, `postgres`, etc.). The most common cause is `make migrate` (or the plain `docker compose exec ...` equivalent) not having been run yet.
 - **`make : The term 'make' is not recognized...`** (Windows PowerShell) — expected, `make` isn't installed by default on Windows. Use the plain `docker compose ...` command shown next to each `make` command in this guide instead (or install `make`, see step 1).
 - **The build fails partway through an `apt-get install` step** (e.g. `Package '...' has no installation candidate`) — this means an upstream Debian package the Dockerfile depends on was renamed or removed since the image was last tested; `git pull` to get the latest `Dockerfile` fix, or open an issue if it's still failing on the current `main`.
-- **Port already in use** (`5173` or `8000`) — something else on your machine is using that port. Stop it, or edit the `ports:` mapping for that service in `docker-compose.yml`/`docker-compose.override.yml`.
-- **Login says "Invalid email or password" right after registering** — double check you registered against `http://localhost:8000` (the backend, not the frontend on `5173`), and that email/password match exactly.
+- **Port already in use** (`5174` or `8000`) — something else on your machine is using that port. Stop it, or edit the `ports:` mapping for that service in `docker-compose.yml`/`docker-compose.override.yml`.
+- **Login says "Invalid email or password" right after registering** — double check you registered against `http://localhost:8000` (the backend, not the frontend on `5174`), and that email/password match exactly.
 - **PST import job stays "pending" forever** — the `worker` container may not be running; check `docker compose ps` and `docker compose logs worker`.
 - **A warning about `JWT_SECRET` in the logs** — expected if you skipped changing it in step 3; harmless for local trying-out, but fix it before exposing this beyond your own machine.
 - **On Windows**, make sure Docker Desktop is set to use the WSL2 backend. If you cloned the repo into a regular Windows folder (e.g. under `Downloads` or `OneDrive`) rather than the WSL filesystem, Docker Desktop's file sharing still works — builds will just be slower than cloning inside WSL (`\\wsl$\...`). OneDrive-synced folders in particular can occasionally cause file-lock errors during `docker compose build`; if you hit one, moving the folder outside OneDrive resolves it.
@@ -214,7 +214,7 @@ See `.env.example` for the full list. Beyond `JWT_SECRET` and `POSTGRES_PASSWORD
 
 - `STORAGE_ROOT` — where case files live inside the `backend`/`worker` containers (defaults to the `case_storage` volume at `/data`); not something you need to change for a Docker setup.
 - `COOKIE_SECURE` — set to `true` once served over HTTPS.
-- `BACKEND_CORS_ORIGINS` — origins allowed to call the API; adjust if you serve the frontend from somewhere other than `localhost:5173`.
+- `BACKEND_CORS_ORIGINS` — origins allowed to call the API; adjust if you serve the frontend from somewhere other than `localhost:5174`.
 
 ### Development without Docker
 
