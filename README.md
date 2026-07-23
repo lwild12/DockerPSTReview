@@ -11,6 +11,7 @@ This guide assumes no prior familiarity with the project. Follow it top to botto
   - Linux: install Docker Engine + the Compose plugin per your distro (e.g. https://docs.docker.com/engine/install/), then make sure your user can run `docker` without `sudo` (`sudo usermod -aG docker $USER`, then log out/in).
 - **Git**, to clone the repository.
 - About **4 GB of free disk space** (container images include LibreOffice and Tesseract, which aren't tiny) and a few minutes for the first build.
+- **`make`** is used for convenience throughout this guide, but it's optional. It's preinstalled on Mac/Linux; **plain Windows PowerShell does not have it** (`make : The term 'make' is not recognized...`). If you're on Windows without WSL, just skip installing it — every `make <target>` command below has the plain `docker compose ...` command it runs written next to it, and you can run that instead. (If you'd rather have `make` itself, install it via `choco install make` with Chocolatey, or use WSL2, where it's available out of the box.)
 
 Verify Docker is ready before continuing:
 
@@ -38,16 +39,21 @@ cp .env.example .env
 
 Open `.env` in a text editor. For trying it out on your own machine, the defaults work as-is — you don't need to change anything to get started. Before you consider this reachable from anywhere other than `localhost`, though, change these two values:
 
-- `JWT_SECRET` — replace `change-me-to-a-long-random-string` with a long random string (e.g. run `openssl rand -hex 32` and paste the output). This signs login sessions; leaving it at the default means anyone can forge a login. The backend will print a warning in its logs on startup if you forget.
+- `JWT_SECRET` — replace `change-me-to-a-long-random-string` with a long random string. This signs login sessions; leaving it at the default means anyone can forge a login. The backend will print a warning in its logs on startup if you forget.
+  - Mac/Linux: `openssl rand -hex 32`
+  - Windows PowerShell: `-join ((48..57)+(97..102)|Get-Random -Count 32|%{[char]$_})`
+  - Or just mash the keyboard for 40+ random characters — it doesn't need to be memorable, only unpredictable.
 - `POSTGRES_PASSWORD` — replace `change-me` with something real.
 
 ## 4. Start everything
 
 ```bash
 make up
+# or, without make:
+docker compose up -d --build
 ```
 
-This runs `docker compose up -d --build`. The first run downloads base images and builds the backend/frontend containers, which can take several minutes — that's normal. When it finishes, check that everything is actually running:
+The first run downloads base images and builds the backend/frontend containers, which can take several minutes — that's normal. When it finishes, check that everything is actually running:
 
 ```bash
 docker compose ps
@@ -61,6 +67,8 @@ The containers are running, but the database schema doesn't exist yet. Create it
 
 ```bash
 make migrate
+# or, without make:
+docker compose exec backend alembic upgrade head
 ```
 
 Expected output ends with something like `Running upgrade ... -> ..., add ocr fields and extend search vector` and no errors. You only need to run this once (and again after pulling code that adds a new migration).
@@ -112,39 +120,42 @@ To work with others, have them create their own account (step 6), then as the ca
 
 ## Everyday commands
 
-```bash
-make logs             # tail all container logs (Ctrl+C to stop watching)
-make down              # stop everything (data is preserved in Docker volumes)
-make up                 # start it back up
-docker compose logs -f worker   # just the background-job worker, e.g. while debugging an import
-```
+| With `make` | Without `make` |
+|---|---|
+| `make logs` | `docker compose logs -f` |
+| `make down` | `docker compose down` |
+| `make up` | `docker compose up -d --build` |
+
+(all preserve your data, which lives in Docker volumes, not in the containers themselves). To watch just one service, e.g. while debugging an import: `docker compose logs -f worker`.
 
 To update after pulling new code:
 
 ```bash
 git pull
-make up          # rebuilds changed images
-make migrate     # applies any new database migrations
+make up          # or: docker compose up -d --build   -- rebuilds changed images
+make migrate     # or: docker compose exec backend alembic upgrade head -- applies any new migrations
 ```
 
 To wipe everything and start completely fresh (**this deletes all imported data**):
 
 ```bash
-make down
-docker volume rm dockerpstreview_pgdata dockerpstreview_redis_data dockerpstreview_case_storage
+make down    # or: docker compose down
+docker volume ls                      # find your volume names, prefix varies by folder name
+docker volume rm <prefix>_pgdata <prefix>_redis_data <prefix>_case_storage
 make up
 make migrate
 ```
-(the volume name prefix matches your project directory name — run `docker volume ls` if the above names don't match).
 
 ## Troubleshooting
 
-- **`docker compose ps` shows a service restarting/unhealthy** — check its logs: `docker compose logs backend` (or `worker`, `postgres`, etc.). The most common cause is `make migrate` not having been run yet.
+- **`docker compose ps` shows a service restarting/unhealthy** — check its logs: `docker compose logs backend` (or `worker`, `postgres`, etc.). The most common cause is `make migrate` (or the plain `docker compose exec ...` equivalent) not having been run yet.
+- **`make : The term 'make' is not recognized...`** (Windows PowerShell) — expected, `make` isn't installed by default on Windows. Use the plain `docker compose ...` command shown next to each `make` command in this guide instead (or install `make`, see step 1).
+- **The build fails partway through an `apt-get install` step** (e.g. `Package '...' has no installation candidate`) — this means an upstream Debian package the Dockerfile depends on was renamed or removed since the image was last tested; `git pull` to get the latest `Dockerfile` fix, or open an issue if it's still failing on the current `main`.
 - **Port already in use** (`5173` or `8000`) — something else on your machine is using that port. Stop it, or edit the `ports:` mapping for that service in `docker-compose.yml`/`docker-compose.override.yml`.
 - **Login says "Invalid email or password" right after registering** — double check you registered against `http://localhost:8000` (the backend, not the frontend on `5173`), and that email/password match exactly.
 - **PST import job stays "pending" forever** — the `worker` container may not be running; check `docker compose ps` and `docker compose logs worker`.
 - **A warning about `JWT_SECRET` in the logs** — expected if you skipped changing it in step 3; harmless for local trying-out, but fix it before exposing this beyond your own machine.
-- **On Windows**, make sure Docker Desktop is set to use the WSL2 backend and that the repository is cloned inside your WSL filesystem (not `C:\...`) for reasonable performance.
+- **On Windows**, make sure Docker Desktop is set to use the WSL2 backend. If you cloned the repo into a regular Windows folder (e.g. under `Downloads` or `OneDrive`) rather than the WSL filesystem, Docker Desktop's file sharing still works — builds will just be slower than cloning inside WSL (`\\wsl$\...`). OneDrive-synced folders in particular can occasionally cause file-lock errors during `docker compose build`; if you hit one, moving the folder outside OneDrive resolves it.
 
 ## Advanced
 
@@ -186,14 +197,14 @@ frontend/
 
 ### More Makefile targets
 
-```bash
-make build             # docker compose build (no start)
-make test              # run the backend pytest suite
-make lint               # ruff check
-make fmt                 # ruff format
-make makemigration m="message"   # generate a new Alembic migration
-make shell-backend    # shell into the backend container
-```
+| With `make` | Without `make` |
+|---|---|
+| `make build` | `docker compose build` (build without starting) |
+| `make test` | `docker compose exec backend pytest` |
+| `make lint` | `docker compose exec backend ruff check app` |
+| `make fmt` | `docker compose exec backend ruff format app` |
+| `make makemigration m="message"` | `docker compose exec backend alembic revision --autogenerate -m "message"` |
+| `make shell-backend` | `docker compose exec backend bash` |
 
 `docker-compose.override.yml` is applied automatically in dev — it bind-mounts source into the containers and runs `uvicorn --reload` / `vite dev` for live reload. For a production-style build, run with `docker compose -f docker-compose.yml up -d --build` to skip the override.
 
