@@ -62,8 +62,26 @@ export function DocumentViewerPage() {
       ? reviewSetDocs[currentIndex + 1]
       : undefined;
 
-  const goTo = (targetDocumentId: string) =>
+  const statusMutation = useMutation({
+    mutationFn: (status: ReviewStatus) =>
+      updateReviewSetDocument(caseId, reviewSetId, documentId, { review_status: status }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ["review-set-documents", caseId, reviewSetId] }),
+  });
+
+  const goTo = (targetDocumentId: string) => {
+    // Leaving a document via Previous/Next counts as having reviewed it --
+    // auto-promote unreviewed/in_review to reviewed, but leave an explicit
+    // "flagged" call alone.
+    if (
+      currentReviewDoc &&
+      (currentReviewDoc.review_status === "unreviewed" ||
+        currentReviewDoc.review_status === "in_review")
+    ) {
+      statusMutation.mutate("reviewed");
+    }
     navigate(`/cases/${caseId}/documents/${targetDocumentId}?reviewSet=${reviewSetId}`);
+  };
 
   useEffect(() => {
     if (reviewSetId === "") return;
@@ -76,14 +94,7 @@ export function DocumentViewerPage() {
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [reviewSetId, prevDoc, nextDoc]);
-
-  const statusMutation = useMutation({
-    mutationFn: (status: ReviewStatus) =>
-      updateReviewSetDocument(caseId, reviewSetId, documentId, { review_status: status }),
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: ["review-set-documents", caseId, reviewSetId] }),
-  });
+  }, [reviewSetId, prevDoc, nextDoc, currentReviewDoc]);
 
   const { data: redactions } = useQuery({
     queryKey: ["redactions", caseId, documentId],
