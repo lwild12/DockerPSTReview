@@ -148,7 +148,10 @@ export function ReviewSetDetailPage() {
             {documents.map((d) => (
               <Table.Tr key={d.id}>
                 <Table.Td>
-                  <Anchor component={Link} to={`/cases/${caseId}/documents/${d.document_id}`}>
+                  <Anchor
+                    component={Link}
+                    to={`/cases/${caseId}/documents/${d.document_id}?reviewSet=${reviewSetId}`}
+                  >
                     {d.document_subject || "(no subject)"}
                   </Anchor>
                 </Table.Td>
