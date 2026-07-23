@@ -15,6 +15,7 @@ import {
   Title,
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
+import { IconPaperclip } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
 import { Link, useParams } from "react-router-dom";
@@ -25,8 +26,10 @@ import {
   listReviewSetDocuments,
   listReviewSets,
   updateReviewSetDocument,
+  type ReviewSetDocument,
   type ReviewStatus,
 } from "../api/reviewSets";
+import { childrenByParent, groupIntoFamilies } from "../lib/documentFamilies";
 
 const STATUS_COLOR: Record<ReviewStatus, string> = {
   unreviewed: "gray",
@@ -146,11 +149,26 @@ export function ReviewSetDetailPage() {
     });
   };
 
+  const toggleFamily = (parentId: string, childIds: string[]) => {
+    setSelectedIds((prev) => {
+      const familyIds = [parentId, ...childIds];
+      const allInFamilySelected = familyIds.every((id) => prev.has(id));
+      const next = new Set(prev);
+      familyIds.forEach((id) => (allInFamilySelected ? next.delete(id) : next.add(id)));
+      return next;
+    });
+  };
+
   const allSelected = (documents ?? []).length > 0 && (documents ?? []).every((d) => selectedIds.has(d.document_id));
   const someSelected = (documents ?? []).some((d) => selectedIds.has(d.document_id));
   const toggleSelectAll = (checked: boolean) => {
     setSelectedIds(checked ? new Set((documents ?? []).map((d) => d.document_id)) : new Set());
   };
+
+  const rsGetId = (d: ReviewSetDocument) => d.document_id;
+  const rsGetParentId = (d: ReviewSetDocument) => d.document_parent_document_id;
+  const familyRows = groupIntoFamilies(documents ?? [], rsGetId, rsGetParentId);
+  const familyChildren = childrenByParent(documents ?? [], rsGetParentId);
 
   return (
     <Container size="xl" py="xl">
@@ -196,21 +214,36 @@ export function ReviewSetDetailPage() {
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>
-            {documents.map((d) => (
-              <Table.Tr key={d.id}>
+            {familyRows.map(({ item: d, isChild, childCount }) => (
+              <Table.Tr key={d.id} style={{ backgroundColor: isChild ? "var(--mantine-color-gray-0)" : undefined }}>
                 <Table.Td>
                   <Checkbox
                     checked={selectedIds.has(d.document_id)}
-                    onChange={() => toggleSelect(d.document_id)}
+                    onChange={() => {
+                      const childIds = familyChildren.get(d.document_id)?.map(rsGetId) ?? [];
+                      if (!isChild && childIds.length > 0) {
+                        toggleFamily(d.document_id, childIds);
+                      } else {
+                        toggleSelect(d.document_id);
+                      }
+                    }}
                   />
                 </Table.Td>
                 <Table.Td>
-                  <Anchor
-                    component={Link}
-                    to={`/cases/${caseId}/documents/${d.document_id}?reviewSet=${reviewSetId}`}
-                  >
-                    {d.document_subject || "(no subject)"}
-                  </Anchor>
+                  <span style={{ paddingLeft: isChild ? 20 : 0, display: "inline-flex", alignItems: "center", gap: 4 }}>
+                    {isChild && <IconPaperclip size={13} style={{ opacity: 0.6 }} />}
+                    <Anchor
+                      component={Link}
+                      to={`/cases/${caseId}/documents/${d.document_id}?reviewSet=${reviewSetId}`}
+                    >
+                      {d.document_subject || "(no subject)"}
+                    </Anchor>
+                    {!isChild && childCount > 0 && (
+                      <Badge size="xs" variant="light" ml={4}>
+                        {childCount} attachment{childCount > 1 ? "s" : ""}
+                      </Badge>
+                    )}
+                  </span>
                 </Table.Td>
                 <Table.Td>{d.document_sender}</Table.Td>
                 <Table.Td>

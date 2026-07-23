@@ -39,6 +39,7 @@ def _to_read(link: ReviewSetDocument, document: Document) -> ReviewSetDocumentRe
         document_sender=document.sender,
         document_doc_type=document.doc_type.value,
         document_sent_at=document.sent_at,
+        document_parent_document_id=document.parent_document_id,
     )
 
 

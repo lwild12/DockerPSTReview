@@ -24,6 +24,7 @@ export interface ReviewSetDocument {
   document_sender: string;
   document_doc_type: string;
   document_sent_at: string | null;
+  document_parent_document_id: string | null;
 }
 
 export async function listReviewSets(caseId: string): Promise<ReviewSet[]> {

@@ -109,6 +109,32 @@ async def test_update_document_not_in_review_set_returns_404(client, db_session)
     assert resp.status_code == 404
 
 
+async def test_review_set_document_exposes_parent_document_id(client, db_session):
+    case_id = await _setup_case(client)
+    parent = await _seed_document(db_session, case_id)
+    attachment = Document(
+        id=uuid.uuid4(),
+        case_id=uuid.UUID(case_id),
+        doc_type=DocType.attachment,
+        subject="invoice.pdf",
+        parent_document_id=parent.id,
+        content_hash=str(uuid.uuid4()),
+    )
+    db_session.add(attachment)
+    await db_session.commit()
+    await db_session.refresh(attachment)
+
+    review_set = await client.post(f"/api/cases/{case_id}/review-sets", json={"name": "RS"})
+    review_set_id = review_set.json()["id"]
+    add_resp = await client.post(
+        f"/api/cases/{case_id}/review-sets/{review_set_id}/documents",
+        json={"document_ids": [str(parent.id), str(attachment.id)]},
+    )
+    by_id = {d["document_id"]: d for d in add_resp.json()}
+    assert by_id[str(parent.id)]["document_parent_document_id"] is None
+    assert by_id[str(attachment.id)]["document_parent_document_id"] == str(parent.id)
+
+
 async def test_bulk_update_review_status(client, db_session):
     case_id = await _setup_case(client)
     doc1 = await _seed_document(db_session, case_id)

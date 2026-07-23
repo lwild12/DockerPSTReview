@@ -64,6 +64,16 @@ export function DocumentListPage() {
     });
   };
 
+  const toggleFamily = (parentId: string, childIds: string[]) => {
+    setSelectedIds((prev) => {
+      const familyIds = [parentId, ...childIds];
+      const allSelected = familyIds.every((id) => prev.has(id));
+      const next = new Set(prev);
+      familyIds.forEach((id) => (allSelected ? next.delete(id) : next.add(id)));
+      return next;
+    });
+  };
+
   const toggleSelectAll = (checked: boolean) => {
     setSelectedIds(checked ? new Set((documents ?? []).map((d) => d.id)) : new Set());
   };
@@ -157,6 +167,7 @@ export function DocumentListPage() {
           selectedIds={selectedIds}
           onToggleSelect={toggleSelect}
           onToggleSelectAll={toggleSelectAll}
+          onToggleFamily={toggleFamily}
         />
       )}
       {documents?.length === 0 && <Text c="dimmed">No documents match these filters.</Text>}
