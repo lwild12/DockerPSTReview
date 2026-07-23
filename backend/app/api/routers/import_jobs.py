@@ -12,6 +12,7 @@ from app.models.importjob import PSTImportJob
 from app.models.user import User
 from app.schemas.importjob import ImportJobRead
 from app.services import storage
+from app.services.audit import record_audit
 from app.tasks.ingest_tasks import run_import_job_task
 
 router = APIRouter(prefix="/cases/{case_id}/import-jobs", tags=["import-jobs"])
@@ -54,6 +55,15 @@ async def create_import_job(
     )
     job.storage_path = storage.save_upload(case_id, job.id, file.filename, content)
     db.add(job)
+    record_audit(
+        db,
+        case_id,
+        user.id,
+        "import_job.created",
+        "pst_import_job",
+        str(job.id),
+        {"filename": file.filename, "custodian_id": str(custodian_id)},
+    )
     await db.commit()
     await db.refresh(job)
 

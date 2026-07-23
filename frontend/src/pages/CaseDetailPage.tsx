@@ -96,6 +96,11 @@ export function CaseDetailPage() {
           <Button component={Link} to={`/cases/${caseId}/import`} size="xs" variant="light">
             Import PST
           </Button>
+          {isAdmin && (
+            <Button component={Link} to={`/cases/${caseId}/audit-log`} size="xs" variant="light">
+              Audit log
+            </Button>
+          )}
         </Group>
       </Group>
       <Text c="dimmed" mb="xl">

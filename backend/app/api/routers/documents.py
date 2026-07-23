@@ -2,7 +2,7 @@ import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -73,20 +73,29 @@ async def list_documents(
         stmt = stmt.join(DocumentTag, DocumentTag.document_id == Document.id).where(
             DocumentTag.tag_id == tag_id
         )
+    tsquery = None
     if q:
         pattern = f"%{q}%"
+        tsquery = func.websearch_to_tsquery("english", q)
         stmt = stmt.where(
             or_(
+                Document.search_vector.op("@@")(tsquery),
                 Document.subject.ilike(pattern),
-                Document.body_text.ilike(pattern),
                 Document.sender.ilike(pattern),
+                Document.body_text.ilike(pattern),
+                Document.ocr_text.ilike(pattern),
             )
         )
-    stmt = (
-        stmt.order_by(Document.sent_at.desc().nullslast(), Document.created_at.desc())
-        .offset((page - 1) * page_size)
-        .limit(page_size)
-    )
+    if tsquery is not None:
+        # Full-text hits rank by relevance first; the ILIKE-only fallback matches
+        # (substrings a stemmed tsquery wouldn't catch) sort after via ts_rank's 0.
+        stmt = stmt.order_by(
+            func.ts_rank(Document.search_vector, tsquery).desc(),
+            Document.sent_at.desc().nullslast(),
+        )
+    else:
+        stmt = stmt.order_by(Document.sent_at.desc().nullslast(), Document.created_at.desc())
+    stmt = stmt.offset((page - 1) * page_size).limit(page_size)
     result = await db.execute(stmt)
     documents = result.scalars().unique().all()
     return [_list_item(d) for d in documents]

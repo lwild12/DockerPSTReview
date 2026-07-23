@@ -2,6 +2,7 @@ import { Center, Loader } from "@mantine/core";
 import { Navigate, Route, Routes } from "react-router-dom";
 
 import { useAuth } from "./hooks/useAuth";
+import { AuditLogPage } from "./pages/AuditLogPage";
 import { CaseDetailPage } from "./pages/CaseDetailPage";
 import { CaseListPage } from "./pages/CaseListPage";
 import { DocumentListPage } from "./pages/DocumentListPage";
@@ -92,6 +93,14 @@ export function App() {
         element={
           <RequireAuth>
             <ExportPage />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/cases/:caseId/audit-log"
+        element={
+          <RequireAuth>
+            <AuditLogPage />
           </RequireAuth>
         }
       />

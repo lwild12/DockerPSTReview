@@ -1,4 +1,15 @@
-import { Anchor, Badge, Button, Container, Grid, Group, Stack, Text, Title } from "@mantine/core";
+import {
+  Anchor,
+  Badge,
+  Button,
+  Container,
+  Grid,
+  Group,
+  Spoiler,
+  Stack,
+  Text,
+  Title,
+} from "@mantine/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
@@ -93,6 +104,24 @@ export function DocumentViewerPage() {
           </Stack>
 
           <TagPicker caseId={caseId} documentId={documentId} appliedTags={document.tags} />
+
+          {document.ocr_status === "completed" && (
+            <Stack gap={4} mt="md">
+              <Badge color="blue" variant="light" w="fit-content">
+                Scanned document — text extracted via OCR
+              </Badge>
+              <Spoiler maxHeight={120} showLabel="Show more" hideLabel="Show less">
+                <Text size="sm" c="dimmed" style={{ whiteSpace: "pre-wrap" }}>
+                  {document.ocr_text}
+                </Text>
+              </Spoiler>
+            </Stack>
+          )}
+          {document.ocr_status === "failed" && (
+            <Badge color="red" variant="light" mt="md" w="fit-content">
+              OCR failed: {document.ocr_error}
+            </Badge>
+          )}
 
           <Grid mt="lg">
             <Grid.Col span={document.thread_id ? 9 : 12}>
