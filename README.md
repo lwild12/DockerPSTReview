@@ -100,17 +100,18 @@ To work with others, have them register their own account (step 5 above), then a
 | `make logs` | `docker compose logs -f` |
 | `make down` | `docker compose down` |
 | `make up` | `docker compose up -d --build` |
+| `make update` | `./update.sh` |
 
 (all preserve your data, which lives in Docker volumes, not in the containers themselves). To watch just one service, e.g. while debugging an import: `docker compose logs -f worker`.
 
-To update after pulling new code:
+**To update a self-hosted install** (one you set up with `install.sh`, or any production-style deployment using `docker-compose.yml` on its own): run `update.sh` from the repo directory (`sudo ./update.sh`, or `make update`) — it pulls the latest code, rebuilds only what changed, and restarts, all without touching your `.env`/secrets or your existing data volumes. It also warns you if a new setting has shown up in `.env.example` that isn't in your `.env` yet. There's no separate migrate command to remember — new database migrations run automatically as part of the restart.
+
+**If you're just trying it out locally** with `docker-compose.override.yml` in play (the default when you follow step 4 above), a plain update is simpler since there's no production build to preserve:
 
 ```bash
 git pull
 make up          # or: docker compose up -d --build
 ```
-
-That's it — any new database migrations run automatically as part of `up` (see step 4), there's no separate migrate command to remember.
 
 To wipe everything and start completely fresh (**this deletes all imported data**):
 
