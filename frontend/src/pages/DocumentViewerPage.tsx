@@ -23,6 +23,7 @@ import {
   type ReviewStatus,
 } from "../api/reviewSets";
 import { PdfViewer } from "../components/PdfViewer";
+import { TagHotkeyBar } from "../components/TagHotkeyBar";
 import { TagPicker } from "../components/TagPicker";
 import { ThreadPanel } from "../components/ThreadPanel";
 
@@ -218,6 +219,7 @@ export function DocumentViewerPage() {
           </Stack>
 
           <TagPicker caseId={caseId} documentId={documentId} appliedTags={document.tags} />
+          <TagHotkeyBar caseId={caseId} documentId={documentId} appliedTags={document.tags} />
 
           {document.ocr_status === "completed" && (
             <Stack gap={4} mt="md">
