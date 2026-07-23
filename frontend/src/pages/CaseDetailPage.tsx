@@ -84,6 +84,12 @@ export function CaseDetailPage() {
         <Title order={2}>{caseData?.name}</Title>
         <Group>
           {caseData?.my_role && <Badge>{caseData.my_role}</Badge>}
+          <Button component={Link} to={`/cases/${caseId}/documents`} size="xs" variant="light">
+            Documents
+          </Button>
+          <Button component={Link} to={`/cases/${caseId}/review-sets`} size="xs" variant="light">
+            Review sets
+          </Button>
           <Button component={Link} to={`/cases/${caseId}/import`} size="xs" variant="light">
             Import PST
           </Button>
