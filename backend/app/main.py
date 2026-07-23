@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routers import auth, cases, custodians
+from app.api.routers import auth, cases, custodians, import_jobs
 from app.config import DEFAULT_JWT_SECRET, get_settings
 
 logger = logging.getLogger("app")
@@ -35,6 +35,7 @@ app.add_middleware(
 app.include_router(auth.router, prefix="/api")
 app.include_router(cases.router, prefix="/api")
 app.include_router(custodians.router, prefix="/api")
+app.include_router(import_jobs.router, prefix="/api")
 
 
 @app.get("/healthz")

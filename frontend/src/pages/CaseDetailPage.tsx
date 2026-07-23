@@ -82,7 +82,12 @@ export function CaseDetailPage() {
       </Anchor>
       <Group justify="space-between" mt="sm" mb="lg">
         <Title order={2}>{caseData?.name}</Title>
-        {caseData?.my_role && <Badge>{caseData.my_role}</Badge>}
+        <Group>
+          {caseData?.my_role && <Badge>{caseData.my_role}</Badge>}
+          <Button component={Link} to={`/cases/${caseId}/import`} size="xs" variant="light">
+            Import PST
+          </Button>
+        </Group>
       </Group>
       <Text c="dimmed" mb="xl">
         {caseData?.description}

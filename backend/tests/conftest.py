@@ -22,8 +22,10 @@ def _test_database_url(base_url: str) -> tuple[str, str]:
 TEST_DATABASE_URL, TEST_DB_NAME = _test_database_url(settings.database_url)
 
 
-@pytest_asyncio.fixture(scope="session", autouse=True, loop_scope="session")
+@pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def _ensure_test_database():
+    # Not autouse: only tests that actually need a database (via db_engine/client)
+    # should require Postgres to be running.
     parts = urlsplit(settings.database_url.replace("postgresql+asyncpg://", "postgresql://"))
     conn = await asyncpg.connect(
         user=parts.username,
@@ -41,7 +43,7 @@ async def _ensure_test_database():
 
 
 @pytest_asyncio.fixture
-async def db_engine():
+async def db_engine(_ensure_test_database):
     # Fresh engine per test, bound to the current test's event loop, to avoid
     # asyncpg connections leaking across pytest-asyncio's per-test event loops.
     engine = create_async_engine(TEST_DATABASE_URL, pool_pre_ping=True)
@@ -51,6 +53,13 @@ async def db_engine():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
     await engine.dispose()
+
+
+@pytest_asyncio.fixture
+async def db_session(db_engine):
+    session_maker = async_sessionmaker(db_engine, expire_on_commit=False)
+    async with session_maker() as session:
+        yield session
 
 
 @pytest_asyncio.fixture

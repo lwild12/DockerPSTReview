@@ -4,6 +4,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import { useAuth } from "./hooks/useAuth";
 import { CaseDetailPage } from "./pages/CaseDetailPage";
 import { CaseListPage } from "./pages/CaseListPage";
+import { ImportPage } from "./pages/ImportPage";
 import { LoginPage } from "./pages/LoginPage";
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
@@ -39,6 +40,14 @@ export function App() {
         element={
           <RequireAuth>
             <CaseDetailPage />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/cases/:caseId/import"
+        element={
+          <RequireAuth>
+            <ImportPage />
           </RequireAuth>
         }
       />
