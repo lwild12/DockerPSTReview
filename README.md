@@ -53,27 +53,17 @@ make up
 docker compose up -d --build
 ```
 
-The first run downloads base images and builds the backend/frontend containers, which can take several minutes — that's normal. When it finishes, check that everything is actually running:
+The first run downloads base images and builds the backend/frontend containers, which can take several minutes — that's normal. Database migrations run automatically too: a one-off `migrate` service applies the schema before `backend`/`worker` are allowed to start, so there's no separate migration step to remember, on this run or any future one after pulling new code.
+
+Once it finishes, check that everything is actually running:
 
 ```bash
 docker compose ps
 ```
 
-You should see five services (`postgres`, `redis`, `backend`, `worker`, `frontend`) all showing `Up` (postgres/redis will show `Up (healthy)` once their health checks pass, which takes a few seconds).
+You should see `postgres`, `redis`, `backend`, `worker`, and `frontend` all showing `Up` (postgres/redis as `Up (healthy)`), plus a `migrate` container that ran once and shows `Exited (0)` — that's expected, it's not meant to keep running. If `backend`/`worker` never leave `Created`, check `docker compose logs migrate` — it means the migration itself failed.
 
-## 5. Set up the database
-
-The containers are running, but the database schema doesn't exist yet. Create it:
-
-```bash
-make migrate
-# or, without make:
-docker compose exec backend alembic upgrade head
-```
-
-Expected output ends with something like `Running upgrade ... -> ..., add ocr fields and extend search vector` and no errors. You only need to run this once (and again after pulling code that adds a new migration).
-
-## 6. Open the app
+## 5. Open the app
 
 Go to **http://localhost:5174** in your browser. You'll land on a login page. There is no sign-up button in the UI yet — the first account has to be created through the API directly, once, as follows.
 
@@ -103,7 +93,7 @@ curl -X POST http://localhost:8000/api/auth/register \
 
 Now go back to **http://localhost:5174/login** and sign in with that email and password.
 
-## 7. Your first case, start to finish
+## 6. Your first case, start to finish
 
 Everything in this app is scoped to a **case**. Whoever creates a case automatically becomes its **admin**.
 
@@ -116,7 +106,7 @@ Everything in this app is scoped to a **case**. Whoever creates a case automatic
 7. **Export** — click **"Export"** on the case, pick a review set, choose **Bates-numbered production set** (one PDF per document + a Bates log CSV, zipped) or **single combined PDF**, optionally set a Bates prefix/start number, and submit. Redactions are burned in (genuinely removed, not just covered) at this point. Download once the job shows **completed**.
 8. **Audit log** — as an admin, click **"Audit log"** on the case to see a record of every import, tag, redaction, review-set, and export action taken on it.
 
-To work with others, have them create their own account (step 6), then as the case admin go to the case page and use **"Add member"** with their user ID and a role (`admin` / `reviewer` / `viewer`). You can find a user's ID via `GET /api/auth/users/me` (while logged in as them) or the `/docs` page.
+To work with others, have them create their own account (step 5), then as the case admin go to the case page and use **"Add member"** with their user ID and a role (`admin` / `reviewer` / `viewer`). You can find a user's ID via `GET /api/auth/users/me` (while logged in as them) or the `/docs` page.
 
 ## Everyday commands
 
@@ -132,9 +122,10 @@ To update after pulling new code:
 
 ```bash
 git pull
-make up          # or: docker compose up -d --build   -- rebuilds changed images
-make migrate     # or: docker compose exec backend alembic upgrade head -- applies any new migrations
+make up          # or: docker compose up -d --build
 ```
+
+That's it — any new database migrations run automatically as part of `up` (see step 4), there's no separate migrate command to remember.
 
 To wipe everything and start completely fresh (**this deletes all imported data**):
 
@@ -143,12 +134,11 @@ make down    # or: docker compose down
 docker volume ls                      # find your volume names, prefix varies by folder name
 docker volume rm <prefix>_pgdata <prefix>_redis_data <prefix>_case_storage
 make up
-make migrate
 ```
 
 ## Troubleshooting
 
-- **`docker compose ps` shows a service restarting/unhealthy** — check its logs: `docker compose logs backend` (or `worker`, `postgres`, etc.). The most common cause is `make migrate` (or the plain `docker compose exec ...` equivalent) not having been run yet.
+- **`docker compose ps` shows `backend`/`worker` stuck in `Created` and never starting** — the automatic `migrate` step failed. Check `docker compose logs migrate` for the actual Alembic error.
 - **`make : The term 'make' is not recognized...`** (Windows PowerShell) — expected, `make` isn't installed by default on Windows. Use the plain `docker compose ...` command shown next to each `make` command in this guide instead (or install `make`, see step 1).
 - **The build fails partway through an `apt-get install` step** (e.g. `Package '...' has no installation candidate`) — this means an upstream Debian package the Dockerfile depends on was renamed or removed since the image was last tested; `git pull` to get the latest `Dockerfile` fix, or open an issue if it's still failing on the current `main`.
 - **Port already in use** (`5174` or `8000`) — something else on your machine is using that port. Stop it, or edit the `ports:` mapping for that service in `docker-compose.yml`/`docker-compose.override.yml`.
@@ -203,6 +193,7 @@ frontend/
 | `make test` | `docker compose exec backend pytest` |
 | `make lint` | `docker compose exec backend ruff check app` |
 | `make fmt` | `docker compose exec backend ruff format app` |
+| `make migrate` | `docker compose run --rm migrate` (manually re-run migrations without restarting everything else — not needed in normal use, since `up` already does this automatically) |
 | `make makemigration m="message"` | `docker compose exec backend alembic revision --autogenerate -m "message"` |
 | `make shell-backend` | `docker compose exec backend bash` |
 
@@ -253,4 +244,4 @@ The full OpenAPI schema is served at `/openapi.json` (interactive Swagger UI at 
 
 - Calendar item detailed fields (start/end/location/attendees) depend on PST-specific MAPI named-property resolution that isn't implemented yet — calendar items import and are reviewable, but only with reduced metadata fidelity.
 - No S3-compatible object storage backend yet — case files live on a local Docker volume, which is fine for a single self-hosted server but doesn't horizontally scale. Swapping this out is isolated to `backend/app/services/storage.py`.
-- No sign-up page in the frontend UI yet — the first (and every) account is created via the `/docs` page or a direct API call, as shown in step 6 above.
+- No sign-up page in the frontend UI yet — the first (and every) account is created via the `/docs` page or a direct API call, as shown in step 5 above.
