@@ -2,7 +2,7 @@ import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import FileResponse
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import require_case_admin, require_case_member
@@ -30,6 +30,27 @@ async def list_export_jobs(
         select(ExportJob).where(ExportJob.case_id == case_id).order_by(ExportJob.created_at.desc())
     )
     return result.scalars().all()
+
+
+@router.get("/next-bates-number")
+async def get_next_bates_number(
+    case_id: uuid.UUID,
+    prefix: str = "",
+    _membership: CaseMembership = Depends(require_case_member),
+    db: AsyncSession = Depends(get_db),
+):
+    """The next unused Bates number for this case+prefix, so a follow-up
+    production can continue numbering without overlapping a prior one."""
+    result = await db.execute(
+        select(func.max(ExportJob.bates_end_number)).where(
+            ExportJob.case_id == case_id,
+            ExportJob.bates_prefix == prefix,
+            ExportJob.apply_bates.is_(True),
+            ExportJob.bates_end_number.is_not(None),
+        )
+    )
+    max_end = result.scalar_one_or_none()
+    return {"next_bates_number": max_end or 1}
 
 
 @router.post("", response_model=ExportJobRead, status_code=status.HTTP_201_CREATED)
@@ -62,10 +83,16 @@ async def create_export_job(
     if not document_ids:
         raise HTTPException(status_code=400, detail="No documents resolved for this export")
 
+    max_production = await db.execute(
+        select(func.max(ExportJob.production_number)).where(ExportJob.case_id == case_id)
+    )
+    production_number = (max_production.scalar_one_or_none() or 0) + 1
+
     job = ExportJob(
         id=uuid.uuid4(),
         case_id=case_id,
         review_set_id=payload.review_set_id,
+        production_number=production_number,
         export_type=payload.export_type,
         apply_bates=payload.apply_bates,
         bates_prefix=payload.bates_prefix,

@@ -7,11 +7,13 @@ export interface ExportJob {
   id: string;
   case_id: string;
   review_set_id: string | null;
+  production_number: number;
   export_type: ExportType;
   apply_bates: boolean;
   bates_prefix: string;
   bates_start_number: number;
   bates_digit_padding: number;
+  bates_end_number: number | null;
   document_ids: string[];
   status: ExportStatus;
   output_storage_path: string;
@@ -72,6 +74,19 @@ export async function getExportJob(caseId: string, jobId: string): Promise<Expor
 
 export function exportJobDownloadUrl(caseId: string, jobId: string): string {
   return `${API_BASE}/cases/${caseId}/export-jobs/${jobId}/download`;
+}
+
+export async function getNextBatesNumber(caseId: string, prefix: string): Promise<number> {
+  const res = await fetch(
+    `${API_BASE}/cases/${caseId}/export-jobs/next-bates-number?prefix=${encodeURIComponent(prefix)}`,
+    { credentials: "include" },
+  );
+  const body = await handle<{ next_bates_number: number }>(res);
+  return body.next_bates_number;
+}
+
+export function batesLabel(prefix: string, number: number, padding: number): string {
+  return `${prefix}${String(number).padStart(padding, "0")}`;
 }
 
 export const EXPORT_TERMINAL_STATUSES: ExportStatus[] = ["completed", "failed"];

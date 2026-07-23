@@ -31,11 +31,19 @@ class ExportJob(UUIDPKMixin, TimestampMixin, Base):
     review_set_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("review_sets.id"), nullable=True
     )
+    # Sequential per-case counter (1, 2, 3, ...) so a case's productions can be
+    # referred to as "Production 1", "Production 2", etc. regardless of type.
+    # The API computes the real next value; the default only covers direct
+    # construction (tests, scripts) that don't care about the exact number.
+    production_number: Mapped[int] = mapped_column(Integer, default=1)
     export_type: Mapped[ExportType] = mapped_column(Enum(ExportType, name="export_type"))
     apply_bates: Mapped[bool] = mapped_column(Boolean, default=False)
     bates_prefix: Mapped[str] = mapped_column(String(50), default="")
     bates_start_number: Mapped[int] = mapped_column(Integer, default=1)
     bates_digit_padding: Mapped[int] = mapped_column(Integer, default=6)
+    # Next available Bates number after this job's stamping, once completed —
+    # lets a later production with the same prefix continue without overlap.
+    bates_end_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
     document_ids: Mapped[list] = mapped_column(JSONB, default=list)
     status: Mapped[ExportStatus] = mapped_column(
         Enum(ExportStatus, name="export_status"), default=ExportStatus.pending

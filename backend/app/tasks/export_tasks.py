@@ -127,6 +127,9 @@ async def run_export(export_job_id: uuid.UUID, db: AsyncSession) -> None:
                 )
             )
 
+        if job.apply_bates:
+            job.bates_end_number = counter
+
         job.status = ExportStatus.completed
         job.completed_at = datetime.now(UTC)
         await db.commit()
