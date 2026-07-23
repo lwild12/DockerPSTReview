@@ -207,6 +207,23 @@ See `.env.example` for the full list. Beyond `JWT_SECRET` and `POSTGRES_PASSWORD
 - `COOKIE_SECURE` — set to `true` once served over HTTPS.
 - `BACKEND_CORS_ORIGINS` — origins allowed to call the API; adjust if you serve the frontend from somewhere other than `localhost:5174`.
 
+### Deploying with Portainer
+
+Requires Portainer 2.19+ (bundles Docker Compose v2, which understands the `service_completed_successfully`/`service_healthy` startup ordering this stack relies on for automatic migrations — an older Portainer bundling Compose v1 will deploy the stack but won't sequence `migrate` → `backend`/`worker` correctly).
+
+`docker-compose.yml` is a self-contained stack definition — it doesn't require a `.env` file to exist (every variable has a working default baked in), and every long-running service has `restart: unless-stopped` so the stack comes back up on its own after a host reboot or Portainer restart. That makes it deployable as a Portainer stack with no extra setup beyond what's below.
+
+1. In Portainer, go to **Stacks → Add stack**.
+2. Choose **Repository** as the build method, point it at this repo's URL, and set **Compose path** to `docker-compose.yml` — leave `docker-compose.override.yml` out entirely; that file is dev-only (bind mounts, hot reload) and isn't meant for a deployed stack.
+3. Under **Environment variables**, add at minimum:
+   - `JWT_SECRET` — a long random string (see step 3 above for how to generate one). Portainer stacks don't get a `.env` file from the repo (it's gitignored on purpose, since it's usually where real secrets end up), so this **must** be set here or the stack falls back to the insecure placeholder.
+   - `POSTGRES_PASSWORD` — likewise.
+   - `BACKEND_CORS_ORIGINS` — set this to wherever the frontend will actually be reached from (e.g. `https://review.yourdomain.com`), not `localhost` — cookie-based login will fail with a CORS error otherwise.
+   - `COOKIE_SECURE=true` — once you're serving this behind HTTPS (e.g. via a reverse proxy in front of Portainer's managed containers), so session cookies aren't sent over plain HTTP.
+4. Deploy the stack. Postgres/Redis start and become healthy, the one-off `migrate` service applies the schema, then `backend`/`worker`/`frontend` start — the same automatic sequence described in step 4 above, no manual migration step needed here either.
+5. The frontend container listens on port `80` internally, published to host port `5174` by default (`ports: ["5174:80"]` in `docker-compose.yml`); the backend's API is published on `8000`. Put a reverse proxy (Traefik, nginx, Portainer's own or a separate one) in front of both if you want a single public hostname/HTTPS termination — this repo doesn't include one, since that setup is specific to your infrastructure.
+6. To pick up new code later: pull the latest image build in Portainer (or use its **GitOps updates** / webhook feature to redeploy automatically on push) — migrations still apply automatically on the next start, same as local Docker Compose.
+
 ### Development without Docker
 
 Each service can also be run natively (useful for iterating without a rebuild). This requires installing Python 3.12, Node.js, Postgres, Redis, and the native tooling (`pst-utils`, LibreOffice, `tesseract-ocr`, `poppler-utils`) yourself — the whole point of the Docker path above is that you don't have to.
