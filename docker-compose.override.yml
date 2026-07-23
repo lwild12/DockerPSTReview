@@ -21,6 +21,6 @@ services:
     volumes:
       - ./frontend/src:/app/src
       - ./frontend/index.html:/app/index.html
-    ports:
+    ports: !override
       - "${FRONTEND_PORT:-80}:5173"
     command: ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
