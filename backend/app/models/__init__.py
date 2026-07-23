@@ -6,6 +6,7 @@ from app.models.export import ExportDocumentBates, ExportJob, ExportStatus, Expo
 from app.models.importjob import ImportStatus, PSTImportJob
 from app.models.redaction import Redaction
 from app.models.review import ReviewSet, ReviewSetDocument, ReviewStatus
+from app.models.system_settings import SystemSettings
 from app.models.tag import DocumentTag, Tag
 from app.models.user import User
 
@@ -32,6 +33,7 @@ __all__ = [
     "ReviewSet",
     "ReviewSetDocument",
     "ReviewStatus",
+    "SystemSettings",
     "Tag",
     "Thread",
     "User",
