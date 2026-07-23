@@ -133,8 +133,11 @@ try_up() {
 }
 
 is_port_alloc_failure() {
-  # Matches both "Bind for 0.0.0.0:<port>" and "Bind for :::<port>" (IPv6).
-  grep -qE "Bind for (0\.0\.0\.0|:::)[0-9]+ failed: port is already allocated" "$UP_LOG"
+  # Deliberately a plain substring match, not an address-specific regex --
+  # Docker prints this for IPv4 (0.0.0.0:<port>), IPv6 (:::<port>), and
+  # possibly other host bindings, and getting the address format wrong here
+  # once already meant this check silently never matched.
+  grep -q "port is already allocated" "$UP_LOG"
 }
 
 # Docker's internal port allocator (separate from the OS socket layer) can
