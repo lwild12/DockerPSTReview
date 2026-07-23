@@ -14,7 +14,23 @@ export interface Case {
 export interface CaseMember {
   id: string;
   user_id: string;
+  email: string;
   role: CaseRole;
+}
+
+export interface CaseStats {
+  custodians_count: number;
+  import_jobs_total: number;
+  import_jobs_by_status: Record<string, number>;
+  documents_total: number;
+  documents_primary: number;
+  documents_duplicate: number;
+  documents_by_type: Record<string, number>;
+  documents_rendered: number;
+  documents_render_failed: number;
+  documents_pending_render: number;
+  review_sets_count: number;
+  documents_in_any_review_set: number;
 }
 
 export interface Custodian {
@@ -44,13 +60,17 @@ export async function listMembers(caseId: string): Promise<CaseMember[]> {
 
 export async function addMember(
   caseId: string,
-  userId: string,
+  email: string,
   role: CaseRole,
 ): Promise<CaseMember> {
   return apiFetch<CaseMember>(`/cases/${caseId}/members`, {
     method: "POST",
-    body: JSON.stringify({ user_id: userId, role }),
+    body: JSON.stringify({ email, role }),
   });
+}
+
+export async function getCaseStats(caseId: string): Promise<CaseStats> {
+  return apiFetch<CaseStats>(`/cases/${caseId}/stats`);
 }
 
 export async function listCustodians(caseId: string): Promise<Custodian[]> {

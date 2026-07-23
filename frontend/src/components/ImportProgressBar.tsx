@@ -25,6 +25,11 @@ function progressForStatus(status: ImportJob["status"]): number {
 
 export function ImportProgressBar({ job }: { job: ImportJob }) {
   const color = STATUS_COLOR[job.status] ?? "gray";
+  const isRendering = job.status === "rendering" && job.documents_total > 0;
+  const renderedSoFar = job.documents_rendered + job.documents_render_failed;
+  const progress = isRendering
+    ? Math.round((renderedSoFar / job.documents_total) * 100)
+    : progressForStatus(job.status);
 
   return (
     <Stack gap="xs">
@@ -34,7 +39,13 @@ export function ImportProgressBar({ job }: { job: ImportJob }) {
         </Text>
         <Badge color={color}>{job.status.replace(/_/g, " ")}</Badge>
       </Group>
-      <Progress value={progressForStatus(job.status)} color={color} animated={color === "blue"} />
+      <Progress value={progress} color={color} animated={color === "blue"} />
+      {isRendering && (
+        <Text size="xs" c="dimmed">
+          Rendering documents: {renderedSoFar} / {job.documents_total}
+          {job.documents_render_failed > 0 && ` (${job.documents_render_failed} failed)`}
+        </Text>
+      )}
       {job.status === "failed" && job.error_message && (
         <Alert color="red" title="Import failed">
           {job.error_message}

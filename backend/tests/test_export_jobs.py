@@ -94,7 +94,7 @@ async def test_reviewer_cannot_create_export_job_but_can_view(client, db_session
         reviewer = await register_and_login(reviewer_client, "reviewer@example.com")
         await client.post(
             f"/api/cases/{case_id}/members",
-            json={"user_id": reviewer["id"], "role": "reviewer"},
+            json={"email": reviewer["email"], "role": "reviewer"},
         )
         forbidden = await reviewer_client.post(
             f"/api/cases/{case_id}/export-jobs",

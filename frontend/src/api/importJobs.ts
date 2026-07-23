@@ -22,6 +22,9 @@ export interface ImportJob {
   created_at: string;
   started_at: string | null;
   completed_at: string | null;
+  documents_total: number;
+  documents_rendered: number;
+  documents_render_failed: number;
 }
 
 async function handle<T>(res: Response): Promise<T> {

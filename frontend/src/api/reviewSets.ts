@@ -20,6 +20,10 @@ export interface ReviewSetDocument {
   reviewed_by_id: string | null;
   reviewed_at: string | null;
   notes: string;
+  document_subject: string;
+  document_sender: string;
+  document_doc_type: string;
+  document_sent_at: string | null;
 }
 
 export async function listReviewSets(caseId: string): Promise<ReviewSet[]> {

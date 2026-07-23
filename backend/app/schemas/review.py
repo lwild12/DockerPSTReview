@@ -43,3 +43,7 @@ class ReviewSetDocumentRead(BaseModel):
     reviewed_by_id: uuid.UUID | None
     reviewed_at: datetime | None
     notes: str
+    document_subject: str = ""
+    document_sender: str = ""
+    document_doc_type: str = ""
+    document_sent_at: datetime | None = None

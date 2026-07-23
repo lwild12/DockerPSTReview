@@ -1,5 +1,7 @@
 services:
   backend:
+    environment:
+      ENABLE_API_DOCS: "true"
     volumes:
       - ./backend/app:/app/app
       - ./backend/tests:/app/tests
@@ -20,5 +22,5 @@ services:
       - ./frontend/src:/app/src
       - ./frontend/index.html:/app/index.html
     ports:
-      - "8080:5173"
+      - "80:5173"
     command: ["npm", "run", "dev", "--", "--host", "0.0.0.0"]

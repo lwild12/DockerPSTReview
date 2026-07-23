@@ -4,6 +4,7 @@ export interface AuditLog {
   id: string;
   case_id: string;
   user_id: string | null;
+  user_email: string | null;
   action: string;
   target_type: string;
   target_id: string;

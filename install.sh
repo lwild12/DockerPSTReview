@@ -17,7 +17,7 @@ set -euo pipefail
 
 REPO_URL="${REPO_URL:-https://github.com/lwild12/DockerPSTReview.git}"
 INSTALL_DIR="${INSTALL_DIR:-/opt/DockerPSTReview}"
-FRONTEND_PORT=8080
+FRONTEND_PORT=80
 BACKEND_PORT=8000
 
 log()  { printf '\033[1;32m==>\033[0m %s\n' "$1"; }
@@ -83,6 +83,17 @@ if [ -z "$SERVER_IP" ]; then
 fi
 SERVER_IP="${SERVER_IP:-localhost}"
 
+# Browsers omit the port from the Origin header for the scheme's default
+# port (80 for http), so an exact-match CORS allowlist has to match that.
+origin_for() {
+  if [ "$FRONTEND_PORT" = "80" ]; then
+    echo "http://$1"
+  else
+    echo "http://$1:${FRONTEND_PORT}"
+  fi
+}
+APP_URL="$(origin_for "$SERVER_IP")"
+
 if [ -f .env ]; then
   log ".env already exists -- leaving it untouched (re-generating secrets after Postgres has already initialized would break access to your existing data)."
 else
@@ -92,7 +103,7 @@ else
   POSTGRES_PASSWORD_VALUE="$(openssl rand -hex 20)"
   sed -i "s#^JWT_SECRET=.*#JWT_SECRET=${JWT_SECRET_VALUE}#" .env
   sed -i "s#^POSTGRES_PASSWORD=.*#POSTGRES_PASSWORD=${POSTGRES_PASSWORD_VALUE}#" .env
-  sed -i "s#^BACKEND_CORS_ORIGINS=.*#BACKEND_CORS_ORIGINS=http://localhost:${FRONTEND_PORT},http://${SERVER_IP}:${FRONTEND_PORT}#" .env
+  sed -i "s#^BACKEND_CORS_ORIGINS=.*#BACKEND_CORS_ORIGINS=$(origin_for localhost),${APP_URL}#" .env
   chmod 600 .env
   log "Wrote $REPO_DIR/.env -- back this up, it's the only copy of your generated secrets."
 fi
@@ -129,13 +140,10 @@ cat <<EOF
 ----------------------------------------------------------------------
   PST Document Review is running.
 
-  App:        http://${SERVER_IP}:${FRONTEND_PORT}
-  API docs:   http://${SERVER_IP}:${BACKEND_PORT}/docs
+  App:        ${APP_URL}
 
-  No account exists yet. Create the first one by opening the API docs
-  link above, expanding POST /api/auth/register, "Try it out", and
-  submitting your email/password -- then log in at the App link.
-  (Full walkthrough: README.md, steps 5-6.)
+  No account exists yet. Create the first one at ${APP_URL}/register,
+  then log in. (Full walkthrough: README.md, steps 5-6.)
 
   Secrets live in: ${REPO_DIR}/.env  (back this up)
 ----------------------------------------------------------------------

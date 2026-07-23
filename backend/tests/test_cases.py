@@ -52,20 +52,57 @@ async def test_admin_can_add_member_and_reviewer_gains_access(client):
 
         add_resp = await client.post(
             f"/api/cases/{case_id}/members",
-            json={"user_id": reviewer["id"], "role": "reviewer"},
+            json={"email": "reviewer3@example.com", "role": "reviewer"},
         )
         assert add_resp.status_code == 201
+        assert add_resp.json()["email"] == "reviewer3@example.com"
+        assert add_resp.json()["user_id"] == reviewer["id"]
 
         allowed = await reviewer_client.get(f"/api/cases/{case_id}")
         assert allowed.status_code == 200
         assert allowed.json()["my_role"] == "reviewer"
 
+        members = await client.get(f"/api/cases/{case_id}/members")
+        assert members.status_code == 200
+        emails = {m["email"] for m in members.json()}
+        assert "admin3@example.com" in emails
+        assert "reviewer3@example.com" in emails
+
         # reviewers cannot manage members
         forbidden = await reviewer_client.post(
             f"/api/cases/{case_id}/members",
-            json={"user_id": reviewer["id"], "role": "admin"},
+            json={"email": "reviewer3@example.com", "role": "admin"},
         )
         assert forbidden.status_code == 403
+
+
+async def test_add_member_with_unknown_email_returns_404(client):
+    await register_and_login(client, "admin5@example.com")
+    resp = await client.post("/api/cases", json={"name": "Case D"})
+    case_id = resp.json()["id"]
+
+    add_resp = await client.post(
+        f"/api/cases/{case_id}/members",
+        json={"email": "nobody@example.com", "role": "reviewer"},
+    )
+    assert add_resp.status_code == 404
+
+
+async def test_case_stats_reflects_custodians_and_review_sets(client):
+    await register_and_login(client, "admin6@example.com")
+    resp = await client.post("/api/cases", json={"name": "Case E"})
+    case_id = resp.json()["id"]
+
+    await client.post(f"/api/cases/{case_id}/custodians", json={"name": "John Smith"})
+    await client.post(f"/api/cases/{case_id}/review-sets", json={"name": "First pass"})
+
+    stats = await client.get(f"/api/cases/{case_id}/stats")
+    assert stats.status_code == 200
+    body = stats.json()
+    assert body["custodians_count"] == 1
+    assert body["review_sets_count"] == 1
+    assert body["documents_total"] == 0
+    assert body["import_jobs_total"] == 0
 
 
 async def test_custodian_crud_and_role_boundary(client):

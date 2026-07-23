@@ -20,3 +20,6 @@ class ImportJobRead(BaseModel):
     created_at: datetime
     started_at: datetime | None
     completed_at: datetime | None
+    documents_total: int = 0
+    documents_rendered: int = 0
+    documents_render_failed: int = 0

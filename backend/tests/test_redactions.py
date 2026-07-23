@@ -91,7 +91,7 @@ async def test_reviewer_can_redact_but_viewer_cannot(client, db_session):
         reviewer = await register_and_login(reviewer_client, "reviewer@example.com")
         await client.post(
             f"/api/cases/{case_id}/members",
-            json={"user_id": reviewer["id"], "role": "reviewer"},
+            json={"email": reviewer["email"], "role": "reviewer"},
         )
         created = await reviewer_client.post(
             f"/api/cases/{case_id}/documents/{document.id}/redactions",
@@ -103,7 +103,7 @@ async def test_reviewer_can_redact_but_viewer_cannot(client, db_session):
         viewer = await register_and_login(viewer_client, "viewer@example.com")
         await client.post(
             f"/api/cases/{case_id}/members",
-            json={"user_id": viewer["id"], "role": "viewer"},
+            json={"email": viewer["email"], "role": "viewer"},
         )
         forbidden = await viewer_client.post(
             f"/api/cases/{case_id}/documents/{document.id}/redactions",

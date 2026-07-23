@@ -11,6 +11,7 @@ class AuditLogRead(BaseModel):
     id: uuid.UUID
     case_id: uuid.UUID
     user_id: uuid.UUID | None
+    user_email: str | None = None
     action: str
     target_type: str
     target_id: str
