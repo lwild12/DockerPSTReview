@@ -77,6 +77,22 @@ else
 fi
 cd "$REPO_DIR"
 
+# A prior run may have already fallen back to a non-80 port (see the
+# port-retry logic below) -- honor that instead of retrying 80 forever.
+if [ -f .env ] && grep -q '^FRONTEND_PORT=' .env; then
+  FRONTEND_PORT="$(grep '^FRONTEND_PORT=' .env | tail -1 | cut -d= -f2)"
+fi
+
+set_env_var() {
+  # set_env_var KEY VALUE -- updates KEY in .env in place, or appends it
+  # if it isn't there yet (older .env files predate some settings).
+  if grep -q "^$1=" .env; then
+    sed -i "s#^$1=.*#$1=$2#" .env
+  else
+    echo "$1=$2" >>.env
+  fi
+}
+
 SERVER_IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
 if [ -z "$SERVER_IP" ]; then
   SERVER_IP="$(ip route get 1.1.1.1 2>/dev/null | awk '{print $7; exit}')"
@@ -101,15 +117,56 @@ else
   cp .env.example .env
   JWT_SECRET_VALUE="$(openssl rand -hex 32)"
   POSTGRES_PASSWORD_VALUE="$(openssl rand -hex 20)"
-  sed -i "s#^JWT_SECRET=.*#JWT_SECRET=${JWT_SECRET_VALUE}#" .env
-  sed -i "s#^POSTGRES_PASSWORD=.*#POSTGRES_PASSWORD=${POSTGRES_PASSWORD_VALUE}#" .env
-  sed -i "s#^BACKEND_CORS_ORIGINS=.*#BACKEND_CORS_ORIGINS=$(origin_for localhost),${APP_URL}#" .env
+  set_env_var JWT_SECRET "${JWT_SECRET_VALUE}"
+  set_env_var POSTGRES_PASSWORD "${POSTGRES_PASSWORD_VALUE}"
+  set_env_var FRONTEND_PORT "${FRONTEND_PORT}"
+  set_env_var BACKEND_CORS_ORIGINS "$(origin_for localhost),${APP_URL}"
   chmod 600 .env
   log "Wrote $REPO_DIR/.env -- back this up, it's the only copy of your generated secrets."
 fi
 
+UP_LOG="$(mktemp)"
+trap 'rm -f "$UP_LOG"' EXIT
+
+try_up() {
+  docker compose up -d --build >"$UP_LOG" 2>&1
+}
+
 log "Building and starting the stack (this can take several minutes on first run)..."
-docker compose up -d --build
+if ! try_up; then
+  cat "$UP_LOG"
+  # Some hosts intermittently report a frontend port as already allocated
+  # even though nothing is listening on it (nothing in `ss`, no matching
+  # container) -- a known flaky Docker port-allocator condition, not a real
+  # conflict. Rather than leave a fresh install broken, retry automatically
+  # on a handful of alternate ports.
+  if grep -q "Bind for 0.0.0.0:${FRONTEND_PORT} failed: port is already allocated" "$UP_LOG"; then
+    warn "Port ${FRONTEND_PORT} was reported as already allocated. Retrying with a different port..."
+    STARTED=0
+    for candidate in 8080 8888 8081; do
+      [ "$candidate" = "$FRONTEND_PORT" ] && continue
+      FRONTEND_PORT="$candidate"
+      APP_URL="$(origin_for "$SERVER_IP")"
+      set_env_var FRONTEND_PORT "${FRONTEND_PORT}"
+      set_env_var BACKEND_CORS_ORIGINS "$(origin_for localhost),${APP_URL}"
+      log "Trying port ${FRONTEND_PORT}..."
+      if try_up; then
+        log "Stack started successfully on port ${FRONTEND_PORT}."
+        STARTED=1
+        break
+      fi
+      cat "$UP_LOG"
+    done
+    if [ "$STARTED" -ne 1 ]; then
+      err "Could not start the frontend container on any of the tried ports (80, 8080, 8888, 8081)."
+      err "Free up one of these ports, or set FRONTEND_PORT in .env yourself, then re-run: docker compose up -d"
+      exit 1
+    fi
+  else
+    err "docker compose up failed -- see the output above for details."
+    exit 1
+  fi
+fi
 
 log "Waiting for the backend to become healthy..."
 READY=0
