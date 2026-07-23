@@ -132,19 +132,28 @@ try_up() {
   docker compose up -d --build >"$UP_LOG" 2>&1
 }
 
+is_port_alloc_failure() {
+  # Matches both "Bind for 0.0.0.0:<port>" and "Bind for :::<port>" (IPv6).
+  grep -qE "Bind for (0\.0\.0\.0|:::)[0-9]+ failed: port is already allocated" "$UP_LOG"
+}
+
+# Docker's internal port allocator (separate from the OS socket layer) can
+# briefly report a port as taken right after a failed attempt, before its
+# own async container/endpoint cleanup has settled -- give it a moment and
+# a clean container before trying again.
+settle_frontend() {
+  docker compose rm -sf frontend >/dev/null 2>&1 || true
+  sleep 5
+}
+
 log "Building and starting the stack (this can take several minutes on first run)..."
 if ! try_up; then
   cat "$UP_LOG"
-  # Some hosts intermittently report a frontend port as already allocated
-  # even though nothing is listening on it (nothing in `ss`, no matching
-  # container) -- a known flaky Docker port-allocator condition, not a real
-  # conflict. Rather than leave a fresh install broken, retry automatically
-  # on a handful of alternate ports.
-  if grep -q "Bind for 0.0.0.0:${FRONTEND_PORT} failed: port is already allocated" "$UP_LOG"; then
-    warn "Port ${FRONTEND_PORT} was reported as already allocated. Retrying with a different port..."
+  if is_port_alloc_failure; then
+    warn "Port ${FRONTEND_PORT} was reported as already allocated. This is often Docker's port allocator getting out of sync rather than a real conflict -- retrying."
     STARTED=0
-    for candidate in 8080 8888 8081; do
-      [ "$candidate" = "$FRONTEND_PORT" ] && continue
+    for candidate in "$FRONTEND_PORT" 8080 8888 8081; do
+      settle_frontend
       FRONTEND_PORT="$candidate"
       APP_URL="$(origin_for "$SERVER_IP")"
       set_env_var FRONTEND_PORT "${FRONTEND_PORT}"
@@ -157,9 +166,24 @@ if ! try_up; then
       fi
       cat "$UP_LOG"
     done
+    if [ "$STARTED" -ne 1 ] && command -v systemctl >/dev/null 2>&1; then
+      warn "Still failing -- restarting the Docker daemon to clear its port allocator state, then trying once more..."
+      systemctl restart docker
+      for _ in $(seq 1 15); do
+        docker info >/dev/null 2>&1 && break
+        sleep 1
+      done
+      settle_frontend
+      if try_up; then
+        log "Stack started successfully on port ${FRONTEND_PORT} after a Docker daemon restart."
+        STARTED=1
+      else
+        cat "$UP_LOG"
+      fi
+    fi
     if [ "$STARTED" -ne 1 ]; then
-      err "Could not start the frontend container on any of the tried ports (80, 8080, 8888, 8081)."
-      err "Free up one of these ports, or set FRONTEND_PORT in .env yourself, then re-run: docker compose up -d"
+      err "Could not start the frontend container even after retries and a Docker daemon restart."
+      err "Free up one of the tried ports (80, 8080, 8888, 8081), or set FRONTEND_PORT in .env yourself, then re-run: docker compose up -d"
       exit 1
     fi
   else
