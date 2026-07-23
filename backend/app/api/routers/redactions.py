@@ -1,6 +1,9 @@
+import csv
+import io
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -11,12 +14,18 @@ from app.models.case import CaseMembership
 from app.models.document import Document
 from app.models.redaction import Redaction
 from app.models.user import User
-from app.schemas.redaction import RedactionCreate, RedactionRead, RedactionUpdate
+from app.schemas.redaction import (
+    RedactionCreate,
+    RedactionLogEntry,
+    RedactionRead,
+    RedactionUpdate,
+)
 from app.services.audit import record_audit
 
 router = APIRouter(
     prefix="/cases/{case_id}/documents/{document_id}/redactions", tags=["redactions"]
 )
+case_log_router = APIRouter(prefix="/cases/{case_id}/redactions", tags=["redactions"])
 
 
 async def _get_document_or_404(
@@ -145,3 +154,72 @@ async def delete_redaction(
     )
     await db.delete(redaction)
     await db.commit()
+
+
+async def _fetch_case_redaction_log(case_id: uuid.UUID, db: AsyncSession) -> list[RedactionLogEntry]:
+    result = await db.execute(
+        select(Redaction, Document.subject, Document.sender, User.email)
+        .join(Document, Document.id == Redaction.document_id)
+        .outerjoin(User, User.id == Redaction.created_by_id)
+        .where(Document.case_id == case_id)
+        .order_by(Document.subject, Redaction.page_number, Redaction.created_at)
+    )
+    return [
+        RedactionLogEntry.model_validate(
+            {
+                **{c.name: getattr(redaction, c.name) for c in Redaction.__table__.columns},
+                "document_subject": subject,
+                "document_sender": sender,
+                "created_by_email": email,
+            }
+        )
+        for redaction, subject, sender, email in result.all()
+    ]
+
+
+@case_log_router.get("", response_model=list[RedactionLogEntry])
+async def list_case_redaction_log(
+    case_id: uuid.UUID,
+    _membership: CaseMembership = Depends(require_case_member),
+    db: AsyncSession = Depends(get_db),
+):
+    return await _fetch_case_redaction_log(case_id, db)
+
+
+@case_log_router.get("/export.csv")
+async def export_case_redaction_log_csv(
+    case_id: uuid.UUID,
+    _membership: CaseMembership = Depends(require_case_member),
+    db: AsyncSession = Depends(get_db),
+):
+    entries = await _fetch_case_redaction_log(case_id, db)
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(
+        [
+            "document_id",
+            "document_subject",
+            "document_sender",
+            "page_number",
+            "reason",
+            "redacted_by",
+            "redacted_at",
+        ]
+    )
+    for entry in entries:
+        writer.writerow(
+            [
+                str(entry.document_id),
+                entry.document_subject,
+                entry.document_sender,
+                entry.page_number,
+                entry.reason,
+                entry.created_by_email or str(entry.created_by_id),
+                entry.created_at.isoformat(),
+            ]
+        )
+    return Response(
+        content=buffer.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="redaction_log_{case_id}.csv"'},
+    )

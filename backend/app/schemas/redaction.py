@@ -37,3 +37,22 @@ class RedactionRead(BaseModel):
     color: str
     created_by_id: uuid.UUID
     created_at: datetime
+
+
+class RedactionLogEntry(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    document_id: uuid.UUID
+    document_subject: str
+    document_sender: str
+    page_number: int
+    x: float
+    y: float
+    width: float
+    height: float
+    reason: str
+    color: str
+    created_by_id: uuid.UUID
+    created_by_email: str | None = None
+    created_at: datetime

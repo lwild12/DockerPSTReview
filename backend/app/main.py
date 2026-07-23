@@ -62,6 +62,7 @@ app.include_router(coding_fields.router, prefix="/api")
 app.include_router(coding_fields.document_coding_router, prefix="/api")
 app.include_router(review_sets.router, prefix="/api")
 app.include_router(redactions.router, prefix="/api")
+app.include_router(redactions.case_log_router, prefix="/api")
 app.include_router(export_jobs.router, prefix="/api")
 app.include_router(audit.router, prefix="/api")
 

@@ -11,6 +11,7 @@ import { DocumentViewerPage } from "./pages/DocumentViewerPage";
 import { ExportPage } from "./pages/ExportPage";
 import { ImportPage } from "./pages/ImportPage";
 import { LoginPage } from "./pages/LoginPage";
+import { RedactionLogPage } from "./pages/RedactionLogPage";
 import { RegisterPage } from "./pages/RegisterPage";
 import { ReviewSetDetailPage, ReviewSetsPage } from "./pages/ReviewSetsPage";
 
@@ -96,6 +97,14 @@ export function App() {
         element={
           <RequireAuth>
             <CodingFieldsPage />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/cases/:caseId/redaction-log"
+        element={
+          <RequireAuth>
+            <RedactionLogPage />
           </RequireAuth>
         }
       />
