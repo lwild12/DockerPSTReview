@@ -77,7 +77,7 @@ You should see `postgres`, `redis`, `backend`, `worker`, and `frontend` all show
 
 ## 5. Open the app
 
-Go to **http://localhost:5174** in your browser. You'll land on a login page. There is no sign-up button in the UI yet — the first account has to be created through the API directly, once, as follows.
+Go to **http://localhost:8080** in your browser. You'll land on a login page. There is no sign-up button in the UI yet — the first account has to be created through the API directly, once, as follows.
 
 ### Create your first account
 
@@ -103,7 +103,7 @@ curl -X POST http://localhost:8000/api/auth/register \
 ```
 )
 
-Now go back to **http://localhost:5174/login** and sign in with that email and password.
+Now go back to **http://localhost:8080/login** and sign in with that email and password.
 
 ## 6. Your first case, start to finish
 
@@ -153,8 +153,8 @@ make up
 - **`docker compose ps` shows `backend`/`worker` stuck in `Created` and never starting** — the automatic `migrate` step failed. Check `docker compose logs migrate` for the actual Alembic error.
 - **`make : The term 'make' is not recognized...`** (Windows PowerShell) — expected, `make` isn't installed by default on Windows. Use the plain `docker compose ...` command shown next to each `make` command in this guide instead (or install `make`, see step 1).
 - **The build fails partway through an `apt-get install` step** (e.g. `Package '...' has no installation candidate`) — this means an upstream Debian package the Dockerfile depends on was renamed or removed since the image was last tested; `git pull` to get the latest `Dockerfile` fix, or open an issue if it's still failing on the current `main`.
-- **Port already in use** (`5174` or `8000`) — something else on your machine is using that port. Stop it, or edit the `ports:` mapping for that service in `docker-compose.yml`/`docker-compose.override.yml`.
-- **Login says "Invalid email or password" right after registering** — double check you registered against `http://localhost:8000` (the backend, not the frontend on `5174`), and that email/password match exactly.
+- **Port already in use** (`8080` or `8000`) — something else on your machine is using that port. Stop it, or edit the `ports:` mapping for that service in `docker-compose.yml`/`docker-compose.override.yml`.
+- **Login says "Invalid email or password" right after registering** — double check you registered against `http://localhost:8000` (the backend, not the frontend on `8080`), and that email/password match exactly.
 - **PST import job stays "pending" forever** — the `worker` container may not be running; check `docker compose ps` and `docker compose logs worker`.
 - **A warning about `JWT_SECRET` in the logs** — expected if you skipped changing it in step 3; harmless for local trying-out, but fix it before exposing this beyond your own machine.
 - **On Windows**, make sure Docker Desktop is set to use the WSL2 backend. If you cloned the repo into a regular Windows folder (e.g. under `Downloads` or `OneDrive`) rather than the WSL filesystem, Docker Desktop's file sharing still works — builds will just be slower than cloning inside WSL (`\\wsl$\...`). OneDrive-synced folders in particular can occasionally cause file-lock errors during `docker compose build`; if you hit one, moving the folder outside OneDrive resolves it.
@@ -217,7 +217,7 @@ See `.env.example` for the full list. Beyond `JWT_SECRET` and `POSTGRES_PASSWORD
 
 - `STORAGE_ROOT` — where case files live inside the `backend`/`worker` containers (defaults to the `case_storage` volume at `/data`); not something you need to change for a Docker setup.
 - `COOKIE_SECURE` — set to `true` once served over HTTPS.
-- `BACKEND_CORS_ORIGINS` — origins allowed to call the API; adjust if you serve the frontend from somewhere other than `localhost:5174`.
+- `BACKEND_CORS_ORIGINS` — origins allowed to call the API; adjust if you serve the frontend from somewhere other than `localhost:8080`.
 
 ### Deploying with Portainer
 
@@ -233,7 +233,7 @@ Requires Portainer 2.19+ (bundles Docker Compose v2, which understands the `serv
    - `BACKEND_CORS_ORIGINS` — set this to wherever the frontend will actually be reached from (e.g. `https://review.yourdomain.com`), not `localhost` — cookie-based login will fail with a CORS error otherwise.
    - `COOKIE_SECURE=true` — once you're serving this behind HTTPS (e.g. via a reverse proxy in front of Portainer's managed containers), so session cookies aren't sent over plain HTTP.
 4. Deploy the stack. Postgres/Redis start and become healthy, the one-off `migrate` service applies the schema, then `backend`/`worker`/`frontend` start — the same automatic sequence described in step 4 above, no manual migration step needed here either.
-5. The frontend container listens on port `80` internally, published to host port `5174` by default (`ports: ["5174:80"]` in `docker-compose.yml`); the backend's API is published on `8000`. Put a reverse proxy (Traefik, nginx, Portainer's own or a separate one) in front of both if you want a single public hostname/HTTPS termination — this repo doesn't include one, since that setup is specific to your infrastructure.
+5. The frontend container listens on port `80` internally, published to host port `8080` by default (`ports: ["8080:80"]` in `docker-compose.yml`); the backend's API is published on `8000`. Put a reverse proxy (Traefik, nginx, Portainer's own or a separate one) in front of both if you want a single public hostname/HTTPS termination — this repo doesn't include one, since that setup is specific to your infrastructure.
 6. To pick up new code later: pull the latest image build in Portainer (or use its **GitOps updates** / webhook feature to redeploy automatically on push) — migrations still apply automatically on the next start, same as local Docker Compose.
 
 ### Using Dockge or another stack manager that wants a real `.env` file

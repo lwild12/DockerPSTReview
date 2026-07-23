@@ -17,7 +17,7 @@ set -euo pipefail
 
 REPO_URL="${REPO_URL:-https://github.com/lwild12/DockerPSTReview.git}"
 INSTALL_DIR="${INSTALL_DIR:-/opt/DockerPSTReview}"
-FRONTEND_PORT=5174
+FRONTEND_PORT=8080
 BACKEND_PORT=8000
 
 log()  { printf '\033[1;32m==>\033[0m %s\n' "$1"; }
