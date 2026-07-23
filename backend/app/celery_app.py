@@ -4,12 +4,11 @@ from app.config import get_settings
 
 settings = get_settings()
 
-# More task modules are added here as each phase lands (Phase 5: export_tasks).
 celery_app = Celery(
     "pstreview",
     broker=settings.redis_url,
     backend=settings.redis_url,
-    include=["app.tasks.ingest_tasks", "app.tasks.render_tasks"],
+    include=["app.tasks.ingest_tasks", "app.tasks.render_tasks", "app.tasks.export_tasks"],
 )
 
 celery_app.conf.update(

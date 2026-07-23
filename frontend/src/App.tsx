@@ -6,6 +6,7 @@ import { CaseDetailPage } from "./pages/CaseDetailPage";
 import { CaseListPage } from "./pages/CaseListPage";
 import { DocumentListPage } from "./pages/DocumentListPage";
 import { DocumentViewerPage } from "./pages/DocumentViewerPage";
+import { ExportPage } from "./pages/ExportPage";
 import { ImportPage } from "./pages/ImportPage";
 import { LoginPage } from "./pages/LoginPage";
 import { ReviewSetDetailPage, ReviewSetsPage } from "./pages/ReviewSetsPage";
@@ -83,6 +84,14 @@ export function App() {
         element={
           <RequireAuth>
             <ReviewSetDetailPage />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/cases/:caseId/export"
+        element={
+          <RequireAuth>
+            <ExportPage />
           </RequireAuth>
         }
       />

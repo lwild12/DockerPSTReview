@@ -10,6 +10,7 @@ from app.api.routers import (
     cases,
     custodians,
     documents,
+    export_jobs,
     import_jobs,
     redactions,
     review_sets,
@@ -51,6 +52,7 @@ app.include_router(tags.router, prefix="/api")
 app.include_router(tags.document_tags_router, prefix="/api")
 app.include_router(review_sets.router, prefix="/api")
 app.include_router(redactions.router, prefix="/api")
+app.include_router(export_jobs.router, prefix="/api")
 
 
 @app.get("/healthz")

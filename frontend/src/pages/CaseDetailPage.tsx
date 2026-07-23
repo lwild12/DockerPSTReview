@@ -90,6 +90,9 @@ export function CaseDetailPage() {
           <Button component={Link} to={`/cases/${caseId}/review-sets`} size="xs" variant="light">
             Review sets
           </Button>
+          <Button component={Link} to={`/cases/${caseId}/export`} size="xs" variant="light">
+            Export
+          </Button>
           <Button component={Link} to={`/cases/${caseId}/import`} size="xs" variant="light">
             Import PST
           </Button>
