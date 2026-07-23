@@ -4,6 +4,18 @@ A self-hosted eDiscovery/document review tool for Outlook PST files — import, 
 
 This guide assumes no prior familiarity with the project. Follow it top to bottom.
 
+## Quick install (Ubuntu Server)
+
+If you just want it running on a fresh Ubuntu Server with no manual steps, run:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/lwild12/DockerPSTReview/main/install.sh | sudo bash
+```
+
+This installs Docker if it isn't already present, clones the repo to `/opt/DockerPSTReview`, generates a `.env` with real random secrets (never overwriting one that already exists, so it's safe to re-run), and brings the whole stack up. It prints the URLs to use when it's done. Skip straight to [step 6](#6-your-first-case-start-to-finish) below to create your first account and case — everything before that is what the script just did for you.
+
+Prefer to do it by hand, understand each step, or you're not on Ubuntu? Continue reading.
+
 ## 1. What you need before you start
 
 - **Docker Desktop** (Mac/Windows) or **Docker Engine + the Compose plugin** (Linux). This is the only real dependency — Postgres, Redis, and all the PDF/OCR tooling run inside containers, so you do not need to install Python, Node, Postgres, Tesseract, or anything else yourself.
@@ -223,6 +235,10 @@ Requires Portainer 2.19+ (bundles Docker Compose v2, which understands the `serv
 4. Deploy the stack. Postgres/Redis start and become healthy, the one-off `migrate` service applies the schema, then `backend`/`worker`/`frontend` start — the same automatic sequence described in step 4 above, no manual migration step needed here either.
 5. The frontend container listens on port `80` internally, published to host port `5174` by default (`ports: ["5174:80"]` in `docker-compose.yml`); the backend's API is published on `8000`. Put a reverse proxy (Traefik, nginx, Portainer's own or a separate one) in front of both if you want a single public hostname/HTTPS termination — this repo doesn't include one, since that setup is specific to your infrastructure.
 6. To pick up new code later: pull the latest image build in Portainer (or use its **GitOps updates** / webhook feature to redeploy automatically on push) — migrations still apply automatically on the next start, same as local Docker Compose.
+
+### Using Dockge or another stack manager that wants a real `.env` file
+
+Unlike Portainer's own UI-managed environment variables, tools like Dockge expect a literal `.env` file sitting next to the compose file, and manage that file directly. That already works here with no extra setup: `docker-compose.yml` doesn't hard-depend on `.env` existing (see above), but it *does* pick one up automatically the normal Docker Compose way if present, for every setting. Point the tool at this repo's `docker-compose.yml`, give it a `.env` based on `.env.example` (the [Quick install script](#quick-install-ubuntu-server) above generates exactly this, at `/opt/DockerPSTReview/.env`, if you'd rather not write one by hand), and manage it there from then on.
 
 ### Development without Docker
 
