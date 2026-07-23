@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.pytest_cache/
+.ruff_cache/
+
+# Node
+node_modules/
+frontend/dist/
+frontend/*.tsbuildinfo
+
+# Env
+.env
+.env.local
+
+# Case storage / data
+storage/
+backend/tests/fixtures/*.pst
+!backend/tests/fixtures/.gitkeep
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+
+# Logs
+*.log
