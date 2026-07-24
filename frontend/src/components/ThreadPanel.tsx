@@ -8,10 +8,12 @@ export function ThreadPanel({
   caseId,
   threadId,
   currentDocumentId,
+  reviewSetId,
 }: {
   caseId: string;
   threadId: string;
   currentDocumentId: string;
+  reviewSetId?: string;
 }) {
   const { data: siblings } = useQuery({
     queryKey: ["thread", caseId, threadId],
@@ -25,7 +27,11 @@ export function ThreadPanel({
         <NavLink
           key={doc.id}
           component={Link}
-          to={`/cases/${caseId}/documents/${doc.id}`}
+          to={
+            reviewSetId
+              ? `/cases/${caseId}/documents/${doc.id}?reviewSet=${reviewSetId}`
+              : `/cases/${caseId}/documents/${doc.id}`
+          }
           active={doc.id === currentDocumentId}
           label={doc.subject || "(no subject)"}
           description={
