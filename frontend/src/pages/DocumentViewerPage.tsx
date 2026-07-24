@@ -283,6 +283,7 @@ export function DocumentViewerPage() {
                   caseId={caseId}
                   threadId={document.thread_id}
                   currentDocumentId={documentId}
+                  reviewSetId={reviewSetId !== "" ? reviewSetId : undefined}
                 />
               </Grid.Col>
             )}
