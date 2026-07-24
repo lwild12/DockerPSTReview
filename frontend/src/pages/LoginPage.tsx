@@ -14,6 +14,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
+import { getRegistrationEnabled } from "../api/auth";
 import { getOidcPublicConfig, oidcLoginUrl } from "../api/oidc";
 import { useAuth } from "../hooks/useAuth";
 
@@ -28,6 +29,11 @@ export function LoginPage() {
   const { data: oidcConfig } = useQuery({
     queryKey: ["oidc-public-config"],
     queryFn: getOidcPublicConfig,
+  });
+
+  const { data: registrationEnabled } = useQuery({
+    queryKey: ["registration-enabled"],
+    queryFn: getRegistrationEnabled,
   });
 
   const handleSubmit = async (event: FormEvent) => {
@@ -73,9 +79,11 @@ export function LoginPage() {
             <Button type="submit" loading={submitting} fullWidth>
               Sign in
             </Button>
-            <Text size="sm" ta="center">
-              Need an account? <Anchor component={Link} to="/register">Register</Anchor>
-            </Text>
+            {registrationEnabled !== false && (
+              <Text size="sm" ta="center">
+                Need an account? <Anchor component={Link} to="/register">Register</Anchor>
+              </Text>
+            )}
           </Stack>
         </form>
         {oidcConfig?.enabled && (

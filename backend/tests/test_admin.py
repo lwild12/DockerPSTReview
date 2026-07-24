@@ -1,7 +1,9 @@
 import uuid
 
+from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
 
+from app.main import app
 from app.models.user import User
 from tests.conftest import register_and_login
 
@@ -16,13 +18,19 @@ async def _make_superuser(client, db_session, email: str) -> dict:
 
 
 async def test_non_superuser_cannot_access_admin_endpoints(client, db_session):
-    await register_and_login(client, "regular@example.com")
+    # the first registered user always becomes a superuser, so use a second
+    # account (via a separate session) to get a genuinely non-superuser one
+    await register_and_login(client, "first@example.com")
 
-    forbidden_users = await client.get("/api/admin/users")
-    assert forbidden_users.status_code == 403
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as regular_client:
+        await register_and_login(regular_client, "regular@example.com")
 
-    forbidden_settings = await client.get("/api/admin/settings")
-    assert forbidden_settings.status_code == 403
+        forbidden_users = await regular_client.get("/api/admin/users")
+        assert forbidden_users.status_code == 403
+
+        forbidden_settings = await regular_client.get("/api/admin/settings")
+        assert forbidden_settings.status_code == 403
 
 
 async def test_superuser_can_list_and_promote_users(client, db_session):

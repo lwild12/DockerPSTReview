@@ -9,10 +9,11 @@ import {
   TextInput,
   Title,
 } from "@mantine/core";
+import { useQuery } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
-import { register } from "../api/auth";
+import { getRegistrationEnabled, register } from "../api/auth";
 import { ApiError } from "../api/client";
 import { useAuth } from "../hooks/useAuth";
 
@@ -25,6 +26,11 @@ export function RegisterPage() {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
+  const { data: registrationEnabled, isLoading: checkingRegistration } = useQuery({
+    queryKey: ["registration-enabled"],
+    queryFn: getRegistrationEnabled,
+  });
+
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
     setError(null);
@@ -36,6 +42,8 @@ export function RegisterPage() {
     } catch (err) {
       if (err instanceof ApiError && err.status === 400) {
         setError("That email is already registered, or the password is too weak.");
+      } else if (err instanceof ApiError && err.status === 403) {
+        setError("Registration is currently disabled.");
       } else {
         setError("Registration failed. Please try again.");
       }
@@ -43,6 +51,25 @@ export function RegisterPage() {
       setSubmitting(false);
     }
   };
+
+  if (!checkingRegistration && registrationEnabled === false) {
+    return (
+      <Stack align="center" justify="center" mih="100vh">
+        <Paper withBorder shadow="md" p="xl" w={380}>
+          <Title order={2} mb="lg">
+            Registration disabled
+          </Title>
+          <Text size="sm" c="dimmed" mb="md">
+            New accounts aren't being accepted right now. Ask a case admin to add you, or check
+            back later.
+          </Text>
+          <Anchor component={Link} to="/login" size="sm">
+            ← Back to sign in
+          </Anchor>
+        </Paper>
+      </Stack>
+    );
+  }
 
   return (
     <Stack align="center" justify="center" mih="100vh">

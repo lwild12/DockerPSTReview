@@ -16,6 +16,7 @@ class SystemSettings(UUIDPKMixin, Base):
 
     enable_api_docs: Mapped[bool] = mapped_column(Boolean, default=False)
     cookie_secure: Mapped[bool] = mapped_column(Boolean, default=False)
+    registration_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     oidc_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     oidc_issuer_url: Mapped[str] = mapped_column(String(500), default="")
     oidc_client_id: Mapped[str] = mapped_column(String(255), default="")

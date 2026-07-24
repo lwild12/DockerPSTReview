@@ -32,3 +32,8 @@ export async function register(
 export async function getCurrentUser(): Promise<User> {
   return apiFetch<User>("/auth/users/me");
 }
+
+export async function getRegistrationEnabled(): Promise<boolean> {
+  const body = await apiFetch<{ enabled: boolean }>("/auth/registration-enabled");
+  return body.enabled;
+}
