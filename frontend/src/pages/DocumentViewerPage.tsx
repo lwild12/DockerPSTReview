@@ -5,10 +5,12 @@ import {
   Container,
   Grid,
   Group,
+  SegmentedControl,
   Select,
   Spoiler,
   Stack,
   Text,
+  TextInput,
   Title,
 } from "@mantine/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -16,10 +18,16 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 import { documentPdfUrl, getDocument } from "../api/documents";
-import { createRedaction, deleteRedaction, listRedactions } from "../api/redactions";
+import {
+  createRedaction,
+  deleteRedaction,
+  listRedactions,
+  updateRedaction,
+} from "../api/redactions";
 import {
   listReviewSetDocuments,
   updateReviewSetDocument,
+  type ReviewSetDocument,
   type ReviewStatus,
 } from "../api/reviewSets";
 import { CodingForm } from "../components/CodingForm";
@@ -27,6 +35,7 @@ import { PdfViewer } from "../components/PdfViewer";
 import { TagHotkeyBar } from "../components/TagHotkeyBar";
 import { TagPicker } from "../components/TagPicker";
 import { ThreadPanel } from "../components/ThreadPanel";
+import { groupIntoFamilies } from "../lib/documentFamilies";
 
 const STATUS_COLOR: Record<ReviewStatus, string> = {
   unreviewed: "gray",
@@ -43,6 +52,8 @@ export function DocumentViewerPage() {
   const enabled = caseId !== "" && documentId !== "";
   const queryClient = useQueryClient();
   const [redactionMode, setRedactionMode] = useState(false);
+  const [redactionTool, setRedactionTool] = useState<"draw" | "select">("draw");
+  const [redactionReason, setRedactionReason] = useState("");
 
   const { data: document, isLoading } = useQuery({
     queryKey: ["document", caseId, documentId],
@@ -56,12 +67,22 @@ export function DocumentViewerPage() {
     enabled: enabled && reviewSetId !== "",
   });
 
-  const currentIndex = reviewSetDocs?.findIndex((d) => d.document_id === documentId) ?? -1;
-  const currentReviewDoc = currentIndex >= 0 ? reviewSetDocs?.[currentIndex] : undefined;
-  const prevDoc = currentIndex > 0 ? reviewSetDocs?.[currentIndex - 1] : undefined;
+  // Attachments have no sent_at, so the API's own ordering sorts them all
+  // to the end -- group them right after their parent email here too, so
+  // Previous/Next walks the set in the same order the review-set table
+  // displays it in, rather than emails-then-all-attachments.
+  const orderedReviewSetDocs = groupIntoFamilies(
+    reviewSetDocs ?? [],
+    (d: ReviewSetDocument) => d.document_id,
+    (d: ReviewSetDocument) => d.document_parent_document_id,
+  ).map((row) => row.item);
+
+  const currentIndex = orderedReviewSetDocs.findIndex((d) => d.document_id === documentId);
+  const currentReviewDoc = currentIndex >= 0 ? orderedReviewSetDocs[currentIndex] : undefined;
+  const prevDoc = currentIndex > 0 ? orderedReviewSetDocs[currentIndex - 1] : undefined;
   const nextDoc =
-    reviewSetDocs && currentIndex >= 0 && currentIndex < reviewSetDocs.length - 1
-      ? reviewSetDocs[currentIndex + 1]
+    currentIndex >= 0 && currentIndex < orderedReviewSetDocs.length - 1
+      ? orderedReviewSetDocs[currentIndex + 1]
       : undefined;
 
   const statusMutation = useMutation({
@@ -115,12 +136,19 @@ export function DocumentViewerPage() {
       createRedaction(caseId, documentId, {
         page_number: params.pageNumber,
         ...params.rect,
+        reason: redactionReason,
       }),
     onSuccess: invalidateRedactions,
   });
 
   const deleteMutation = useMutation({
     mutationFn: (redactionId: string) => deleteRedaction(caseId, documentId, redactionId),
+    onSuccess: invalidateRedactions,
+  });
+
+  const updateReasonMutation = useMutation({
+    mutationFn: ({ redactionId, reason }: { redactionId: string; reason: string }) =>
+      updateRedaction(caseId, documentId, redactionId, { reason }),
     onSuccess: invalidateRedactions,
   });
 
@@ -246,6 +274,26 @@ export function DocumentViewerPage() {
               {document.rendered_pdf_page_count > 0 ? (
                 <>
                   <Group justify="flex-end" mb="xs">
+                    {redactionMode && (
+                      <>
+                        <SegmentedControl
+                          size="xs"
+                          value={redactionTool}
+                          onChange={(v) => setRedactionTool(v as "draw" | "select")}
+                          data={[
+                            { label: "Draw box", value: "draw" },
+                            { label: "Select text", value: "select" },
+                          ]}
+                        />
+                        <TextInput
+                          size="xs"
+                          w={200}
+                          placeholder="Reason (e.g. PII, Privileged)"
+                          value={redactionReason}
+                          onChange={(e) => setRedactionReason(e.currentTarget.value)}
+                        />
+                      </>
+                    )}
                     <Button
                       size="xs"
                       variant={redactionMode ? "filled" : "light"}
@@ -259,6 +307,7 @@ export function DocumentViewerPage() {
                     url={documentPdfUrl(caseId, documentId)}
                     redactions={redactions ?? []}
                     readOnly={!redactionMode}
+                    redactionTool={redactionTool}
                     onCreateRedaction={
                       redactionMode
                         ? (pageNumber, rect) => createMutation.mutate({ pageNumber, rect })
@@ -266,6 +315,11 @@ export function DocumentViewerPage() {
                     }
                     onDeleteRedaction={
                       redactionMode ? (id) => deleteMutation.mutate(id) : undefined
+                    }
+                    onUpdateRedactionReason={
+                      redactionMode
+                        ? (redactionId, reason) => updateReasonMutation.mutate({ redactionId, reason })
+                        : undefined
                     }
                   />
                 </>

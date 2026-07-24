@@ -24,6 +24,15 @@ export interface RedactionCreate {
   color?: string;
 }
 
+export interface RedactionUpdate {
+  x?: number;
+  y?: number;
+  width?: number;
+  height?: number;
+  reason?: string;
+  color?: string;
+}
+
 export async function listRedactions(caseId: string, documentId: string): Promise<Redaction[]> {
   return apiFetch<Redaction[]>(`/cases/${caseId}/documents/${documentId}/redactions`);
 }
@@ -37,6 +46,18 @@ export async function createRedaction(
     method: "POST",
     body: JSON.stringify(redaction),
   });
+}
+
+export async function updateRedaction(
+  caseId: string,
+  documentId: string,
+  redactionId: string,
+  redaction: RedactionUpdate,
+): Promise<Redaction> {
+  return apiFetch<Redaction>(
+    `/cases/${caseId}/documents/${documentId}/redactions/${redactionId}`,
+    { method: "PATCH", body: JSON.stringify(redaction) },
+  );
 }
 
 export async function deleteRedaction(
