@@ -23,6 +23,7 @@ import {
   updateAdminUser,
   updateSystemSettings,
   type SystemSettings,
+  type SystemSettingsUpdate,
 } from "../api/admin";
 import { useAuth } from "../hooks/useAuth";
 
@@ -149,8 +150,7 @@ export function AdminPage() {
   });
 
   const updateSettingsMutation = useMutation({
-    mutationFn: (payload: { enable_api_docs?: boolean; cookie_secure?: boolean }) =>
-      updateSystemSettings(payload),
+    mutationFn: (payload: SystemSettingsUpdate) => updateSystemSettings(payload),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["admin-settings"] }),
   });
 
@@ -254,6 +254,14 @@ export function AdminPage() {
             checked={settings.cookie_secure}
             onChange={(e) =>
               updateSettingsMutation.mutate({ cookie_secure: e.currentTarget.checked })
+            }
+          />
+          <Checkbox
+            label="Allow new user registration"
+            description="Turning this off hides the Register link and blocks new sign-ups. Existing users are unaffected — but note that adding someone to a case still requires them to already have an account, so onboarding a brand-new person means switching this back on briefly."
+            checked={settings.registration_enabled}
+            onChange={(e) =>
+              updateSettingsMutation.mutate({ registration_enabled: e.currentTarget.checked })
             }
           />
         </Stack>

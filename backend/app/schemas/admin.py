@@ -23,6 +23,7 @@ class AdminUserUpdate(BaseModel):
 class SystemSettingsRead(BaseModel):
     enable_api_docs: bool
     cookie_secure: bool
+    registration_enabled: bool
     oidc_enabled: bool
     oidc_issuer_url: str
     oidc_client_id: str
@@ -35,6 +36,7 @@ class SystemSettingsRead(BaseModel):
 class SystemSettingsUpdate(BaseModel):
     enable_api_docs: bool | None = None
     cookie_secure: bool | None = None
+    registration_enabled: bool | None = None
     oidc_enabled: bool | None = None
     oidc_issuer_url: str | None = None
     oidc_client_id: str | None = None

@@ -12,6 +12,7 @@ export interface AdminUser {
 export interface SystemSettings {
   enable_api_docs: boolean;
   cookie_secure: boolean;
+  registration_enabled: boolean;
   oidc_enabled: boolean;
   oidc_issuer_url: string;
   oidc_client_id: string;
@@ -24,6 +25,7 @@ export interface SystemSettings {
 export interface SystemSettingsUpdate {
   enable_api_docs?: boolean;
   cookie_secure?: boolean;
+  registration_enabled?: boolean;
   oidc_enabled?: boolean;
   oidc_issuer_url?: string;
   oidc_client_id?: string;

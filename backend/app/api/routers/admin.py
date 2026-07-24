@@ -75,6 +75,7 @@ def _to_settings_read(row: SystemSettings) -> SystemSettingsRead:
     return SystemSettingsRead(
         enable_api_docs=row.enable_api_docs,
         cookie_secure=row.cookie_secure,
+        registration_enabled=row.registration_enabled,
         oidc_enabled=row.oidc_enabled,
         oidc_issuer_url=row.oidc_issuer_url,
         oidc_client_id=row.oidc_client_id,
@@ -104,6 +105,8 @@ async def update_system_settings(
         row.enable_api_docs = payload.enable_api_docs
     if payload.cookie_secure is not None:
         row.cookie_secure = payload.cookie_secure
+    if payload.registration_enabled is not None:
+        row.registration_enabled = payload.registration_enabled
     if payload.oidc_issuer_url is not None:
         row.oidc_issuer_url = payload.oidc_issuer_url
     if payload.oidc_client_id is not None:
