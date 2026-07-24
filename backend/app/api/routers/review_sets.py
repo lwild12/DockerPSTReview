@@ -14,6 +14,7 @@ from app.models.review import ReviewSet, ReviewSetDocument
 from app.models.user import User
 from app.schemas.review import (
     ReviewSetAddDocuments,
+    ReviewSetBulkStatusUpdate,
     ReviewSetCreate,
     ReviewSetDocumentRead,
     ReviewSetDocumentUpdate,
@@ -38,6 +39,7 @@ def _to_read(link: ReviewSetDocument, document: Document) -> ReviewSetDocumentRe
         document_sender=document.sender,
         document_doc_type=document.doc_type.value,
         document_sent_at=document.sent_at,
+        document_parent_document_id=document.parent_document_id,
     )
 
 
@@ -167,6 +169,54 @@ async def add_documents_to_review_set(
         )
     await db.commit()
     return [_to_read(link, document) for link, document in created]
+
+
+@router.post(
+    "/{review_set_id}/documents/bulk-review-status", response_model=list[ReviewSetDocumentRead]
+)
+async def bulk_update_review_status(
+    case_id: uuid.UUID,
+    review_set_id: uuid.UUID,
+    payload: ReviewSetBulkStatusUpdate,
+    _membership: CaseMembership = Depends(require_case_reviewer_or_admin),
+    user: User = Depends(current_active_user),
+    db: AsyncSession = Depends(get_db),
+):
+    review_set = await db.get(ReviewSet, review_set_id)
+    if review_set is None or review_set.case_id != case_id:
+        raise HTTPException(status_code=404, detail="Review set not found")
+
+    result = await db.execute(
+        select(ReviewSetDocument, Document)
+        .join(Document, Document.id == ReviewSetDocument.document_id)
+        .where(
+            ReviewSetDocument.review_set_id == review_set_id,
+            ReviewSetDocument.document_id.in_(payload.document_ids),
+        )
+    )
+    rows = result.all()
+    now = datetime.now(UTC)
+    for link, _document in rows:
+        link.review_status = payload.review_status
+        link.reviewed_by_id = user.id
+        link.reviewed_at = now
+
+    if rows:
+        record_audit(
+            db,
+            case_id,
+            user.id,
+            "review_set_document.bulk_updated",
+            "review_set",
+            str(review_set_id),
+            {
+                "document_ids": [str(link.document_id) for link, _ in rows],
+                "review_status": payload.review_status.value,
+            },
+        )
+        await db.commit()
+
+    return [_to_read(link, document) for link, document in rows]
 
 
 @router.patch("/{review_set_id}/documents/{document_id}", response_model=ReviewSetDocumentRead)

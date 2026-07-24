@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 
 import {
+  batesLabel,
   createExportJob,
   exportJobDownloadUrl,
   listExportJobs,
@@ -56,9 +57,11 @@ export function ExportPage() {
       </Title>
 
       <BatesExportForm
+        caseId={caseId}
         reviewSetOptions={(reviewSets ?? []).map((rs) => ({ value: rs.id, label: rs.name }))}
         submitting={createMutation.isPending}
         onSubmit={(payload) => createMutation.mutate(payload)}
+        completedExportCount={(jobs ?? []).filter((j) => j.status === "completed").length}
       />
 
       <Title order={4} mt="xl" mb="sm">
@@ -68,10 +71,21 @@ export function ExportPage() {
         {jobs?.map((job) => (
           <Group key={job.id} justify="space-between" wrap="nowrap">
             <div>
-              <Text size="sm">
-                {job.export_type === "production_set" ? "Production set" : "Combined PDF"}
-                {job.apply_bates && ` — ${job.bates_prefix}${"0".repeat(job.bates_digit_padding)}`}
+              <Text size="sm" fw={600}>
+                Production {job.production_number}
+                <Text span fw={400} c="dimmed">
+                  {" "}
+                  — {job.export_type === "production_set" ? "Production set" : "Combined PDF"}
+                </Text>
               </Text>
+              {job.apply_bates && (
+                <Text size="xs" c="dimmed">
+                  {batesLabel(job.bates_prefix, job.bates_start_number, job.bates_digit_padding)}
+                  {job.bates_end_number != null &&
+                    job.bates_end_number > job.bates_start_number + 1 &&
+                    ` – ${batesLabel(job.bates_prefix, job.bates_end_number - 1, job.bates_digit_padding)}`}
+                </Text>
+              )}
               <Text size="xs" c="dimmed">
                 {new Date(job.created_at).toLocaleString()} — {job.document_ids.length} documents
               </Text>

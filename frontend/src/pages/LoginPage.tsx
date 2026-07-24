@@ -2,6 +2,7 @@ import {
   Alert,
   Anchor,
   Button,
+  Divider,
   Paper,
   PasswordInput,
   Stack,
@@ -9,9 +10,11 @@ import {
   TextInput,
   Title,
 } from "@mantine/core";
+import { useQuery } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
+import { getOidcPublicConfig, oidcLoginUrl } from "../api/oidc";
 import { useAuth } from "../hooks/useAuth";
 
 export function LoginPage() {
@@ -21,6 +24,11 @@ export function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  const { data: oidcConfig } = useQuery({
+    queryKey: ["oidc-public-config"],
+    queryFn: getOidcPublicConfig,
+  });
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
@@ -70,6 +78,14 @@ export function LoginPage() {
             </Text>
           </Stack>
         </form>
+        {oidcConfig?.enabled && (
+          <>
+            <Divider label="or" labelPosition="center" my="md" />
+            <Button component="a" href={oidcLoginUrl()} variant="outline" fullWidth>
+              Sign in with {oidcConfig.display_name}
+            </Button>
+          </>
+        )}
       </Paper>
     </Stack>
   );

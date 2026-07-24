@@ -51,6 +51,11 @@ export function CaseListPage() {
           <Text size="sm" c="dimmed">
             {user?.email}
           </Text>
+          {user?.is_superuser && (
+            <Button component={Link} to="/admin" variant="subtle">
+              Admin
+            </Button>
+          )}
           <Button variant="subtle" onClick={() => { logout().catch(() => {}); }}>
             Sign out
           </Button>

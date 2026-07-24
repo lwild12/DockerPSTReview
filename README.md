@@ -100,17 +100,18 @@ To work with others, have them register their own account (step 5 above), then a
 | `make logs` | `docker compose logs -f` |
 | `make down` | `docker compose down` |
 | `make up` | `docker compose up -d --build` |
+| `make update` | `./update.sh` |
 
 (all preserve your data, which lives in Docker volumes, not in the containers themselves). To watch just one service, e.g. while debugging an import: `docker compose logs -f worker`.
 
-To update after pulling new code:
+**To update a self-hosted install** (one you set up with `install.sh`, or any production-style deployment using `docker-compose.yml` on its own): run `update.sh` from the repo directory (`sudo ./update.sh`, or `make update`) — it pulls the latest code, rebuilds only what changed, and restarts, all without touching your `.env`/secrets or your existing data volumes. It also warns you if a new setting has shown up in `.env.example` that isn't in your `.env` yet. There's no separate migrate command to remember — new database migrations run automatically as part of the restart.
+
+**If you're just trying it out locally** with `docker-compose.override.yml` in play (the default when you follow step 4 above), a plain update is simpler since there's no production build to preserve:
 
 ```bash
 git pull
 make up          # or: docker compose up -d --build
 ```
-
-That's it — any new database migrations run automatically as part of `up` (see step 4), there's no separate migrate command to remember.
 
 To wipe everything and start completely fresh (**this deletes all imported data**):
 
@@ -141,7 +142,7 @@ make up
 | Backend API | FastAPI (async), SQLAlchemy 2.0 + asyncpg, Alembic migrations |
 | Background jobs | Celery + Redis (PST ingestion, rendering, export) |
 | Database | PostgreSQL 16 |
-| Auth | `fastapi-users`, cookie-based JWT sessions, per-case RBAC |
+| Auth | `fastapi-users`, cookie-based JWT sessions, per-case RBAC, optional OIDC/SSO login |
 | PST parsing | `libpff-python`, with `readpst` (`pst-utils`) as a fallback/contacts exporter |
 | PDF pipeline | PyMuPDF (`fitz`) for redaction burn-in, Bates stamping, and merging; WeasyPrint for email→PDF; LibreOffice headless for Office docs; Pillow/img2pdf for images |
 | OCR | Tesseract via `pytesseract` |
@@ -149,7 +150,16 @@ make up
 
 Case files (uploads, staged extraction, native attachments, rendered PDFs, exports) live on a Docker volume mounted only into the `backend` and `worker` containers — never served as static content. All document access goes through authenticated, case-membership-checked API endpoints.
 
-Roles: `admin` (manage case/members/import/export), `reviewer` (tag/redact/review), `viewer` (read-only).
+Roles: `admin` (manage case/members/import/export), `reviewer` (tag/redact/review), `viewer` (read-only) — all per-case. Separately, a user can be a system-wide **superuser**, which grants access to `/admin` (user management and system settings) but no automatic access to any case's documents.
+
+### Admin UI and OIDC login
+
+Any superuser can reach `/admin` (linked from the top of the case list once signed in) for two things:
+
+- **Users** — list every account, promote/demote superuser status, and activate/deactivate accounts (you can't lock yourself out — deactivating or demoting your own account is blocked).
+- **System settings** — the `ENABLE_API_DOCS`/`COOKIE_SECURE` env vars' live values (see above), plus OIDC login configuration: issuer URL, client ID, client secret, and the button label shown on the login page. None of this requires editing `.env` or restarting the stack — the client secret is encrypted at rest with `SECRET_ENCRYPTION_KEY` and never sent back to the browser after saving.
+
+To enable OIDC: set `SECRET_ENCRYPTION_KEY` in `.env` (see above) and restart once, then from `/admin` fill in your identity provider's issuer URL (its OpenID discovery document must be reachable at `<issuer>/.well-known/openid-configuration`), client ID, and client secret, and register `http://<your-host>/api/auth/oidc/callback` as the redirect URI with that provider (the Admin UI displays the exact value to copy). Turning on "Enable OIDC login" is blocked until all three fields are saved. First-time sign-in via OIDC auto-creates a local account from the provider's email — new accounts start as a regular (non-superuser) user on no cases, same as registering directly.
 
 ### Repository layout
 
@@ -189,9 +199,10 @@ frontend/
 See `.env.example` for the full list. Beyond `JWT_SECRET` and `POSTGRES_PASSWORD` (covered in step 3):
 
 - `STORAGE_ROOT` — where case files live inside the `backend`/`worker` containers (defaults to the `case_storage` volume at `/data`); not something you need to change for a Docker setup.
-- `COOKIE_SECURE` — set to `true` once served over HTTPS.
-- `BACKEND_CORS_ORIGINS` — origins allowed to call the API; adjust if you serve the frontend from somewhere other than `localhost`.
-- `ENABLE_API_DOCS` — set to `true` to turn the Swagger UI (`/docs`) and OpenAPI schema back on; off by default everywhere except the dev override.
+- `COOKIE_SECURE` — set to `true` once served over HTTPS. This is only the *initial* value — a superuser can flip it from the Admin UI (`/admin`) afterward, but that change takes a backend restart to apply, same as this env var would.
+- `BACKEND_CORS_ORIGINS` — origins allowed to call the API; adjust if you serve the frontend from somewhere other than `localhost`. Also doubles as the redirect target after OIDC login, if configured.
+- `ENABLE_API_DOCS` — set to `true` to turn the Swagger UI (`/docs`) and OpenAPI schema back on; off by default everywhere except the dev override. Also the initial value for the same Admin UI toggle — that one applies live, no restart needed.
+- `SECRET_ENCRYPTION_KEY` — only needed if you configure OIDC login (see below); encrypts the OIDC client secret at rest. Generate with `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`.
 
 ### Deploying with Portainer
 
@@ -245,7 +256,7 @@ pytest
 
 ### API reference
 
-The interactive Swagger UI (`/docs`) and raw OpenAPI schema (`/openapi.json`) are **disabled by default** — once there's a real Register page, there's no reason to leave every endpoint publicly browsable and callable. The dev override (`docker-compose.override.yml`) re-enables it automatically for local work; for anything else, set `ENABLE_API_DOCS=true` in `.env` (and back to `false`/removed when you're done). Endpoints are organized around a case (`/api/cases/{case_id}/...`): custodians, import-jobs, documents, threads, tags, review-sets, redactions, export-jobs, audit-logs, `stats`, plus case membership management and `fastapi-users`' auth routes.
+The interactive Swagger UI (`/docs`) and raw OpenAPI schema (`/openapi.json`) are **disabled by default** — once there's a real Register page, there's no reason to leave every endpoint publicly browsable and callable. The dev override (`docker-compose.override.yml`) re-enables it automatically for local work; for anything else, either set `ENABLE_API_DOCS=true` in `.env` or flip it live from `/admin` as a superuser (no restart needed either way). Endpoints are organized around a case (`/api/cases/{case_id}/...`): custodians, import-jobs, documents, threads, tags, review-sets, redactions, export-jobs, audit-logs, `stats`, plus case membership management, admin, and `fastapi-users`' auth routes.
 
 ### Known limitations
 

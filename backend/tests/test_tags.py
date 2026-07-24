@@ -99,6 +99,39 @@ async def test_reviewer_can_tag_but_only_admin_can_delete_tag_definition(client,
         assert forbidden_delete.status_code == 403
 
 
+async def test_apply_tag_bulk(client, db_session):
+    case_id = await _setup_case(client)
+    doc1 = await _seed_document(db_session, case_id)
+    doc2 = await _seed_document(db_session, case_id)
+    other_case_id = (
+        (await client.post("/api/cases", json={"name": "Other case"})).json()["id"]
+    )
+    foreign_doc = await _seed_document(db_session, other_case_id)
+    tag_resp = await client.post(f"/api/cases/{case_id}/tags", json={"name": "Bulk"})
+    tag_id = tag_resp.json()["id"]
+
+    bulk_resp = await client.post(
+        f"/api/cases/{case_id}/tags/{tag_id}/apply-bulk",
+        json={"document_ids": [str(doc1.id), str(doc2.id), str(foreign_doc.id)]},
+    )
+    assert bulk_resp.status_code == 200
+    # only the two documents in this case get tagged; the foreign one is silently skipped
+    assert bulk_resp.json() == {"tagged_count": 2}
+
+    detail1 = await client.get(f"/api/cases/{case_id}/documents/{doc1.id}")
+    assert [t["name"] for t in detail1.json()["tags"]] == ["Bulk"]
+    detail2 = await client.get(f"/api/cases/{case_id}/documents/{doc2.id}")
+    assert [t["name"] for t in detail2.json()["tags"]] == ["Bulk"]
+
+    # re-applying in bulk to an already-tagged document is idempotent
+    again = await client.post(
+        f"/api/cases/{case_id}/tags/{tag_id}/apply-bulk",
+        json={"document_ids": [str(doc1.id)]},
+    )
+    assert again.status_code == 200
+    assert again.json() == {"tagged_count": 0}
+
+
 async def test_apply_tag_to_missing_document_or_tag_returns_404(client, db_session):
     case_id = await _setup_case(client)
     document = await _seed_document(db_session, case_id)

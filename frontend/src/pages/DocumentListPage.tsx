@@ -17,6 +17,7 @@ import { Link, useParams } from "react-router-dom";
 
 import { listDocuments, type DedupStatus, type DocType } from "../api/documents";
 import { addDocumentsToReviewSet, createReviewSet, listReviewSets } from "../api/reviewSets";
+import { applyTagBulk, listTags } from "../api/tags";
 import { DocumentTable } from "../components/DocumentTable";
 
 export function DocumentListPage() {
@@ -29,6 +30,7 @@ export function DocumentListPage() {
   const [modalOpened, { open: openModal, close: closeModal }] = useDisclosure(false);
   const [reviewSetChoice, setReviewSetChoice] = useState<string | null>(null);
   const [newReviewSetName, setNewReviewSetName] = useState("");
+  const [bulkTagChoice, setBulkTagChoice] = useState<string | null>(null);
 
   const { data: documents, isLoading } = useQuery({
     queryKey: ["documents", caseId, docType, dedupStatus, search],
@@ -47,6 +49,12 @@ export function DocumentListPage() {
     enabled: caseId !== "",
   });
 
+  const { data: tags } = useQuery({
+    queryKey: ["tags", caseId],
+    queryFn: () => listTags(caseId),
+    enabled: caseId !== "",
+  });
+
   const toggleSelect = (documentId: string) => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
@@ -54,6 +62,20 @@ export function DocumentListPage() {
       else next.add(documentId);
       return next;
     });
+  };
+
+  const toggleFamily = (parentId: string, childIds: string[]) => {
+    setSelectedIds((prev) => {
+      const familyIds = [parentId, ...childIds];
+      const allSelected = familyIds.every((id) => prev.has(id));
+      const next = new Set(prev);
+      familyIds.forEach((id) => (allSelected ? next.delete(id) : next.add(id)));
+      return next;
+    });
+  };
+
+  const toggleSelectAll = (checked: boolean) => {
+    setSelectedIds(checked ? new Set((documents ?? []).map((d) => d.id)) : new Set());
   };
 
   const addToReviewSetMutation = useMutation({
@@ -72,6 +94,15 @@ export function DocumentListPage() {
       setReviewSetChoice(null);
       setNewReviewSetName("");
       closeModal();
+    },
+  });
+
+  const bulkTagMutation = useMutation({
+    mutationFn: (tagId: string) => applyTagBulk(caseId, tagId, Array.from(selectedIds)),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["documents", caseId] });
+      setSelectedIds(new Set());
+      setBulkTagChoice(null);
     },
   });
 
@@ -111,7 +142,21 @@ export function DocumentListPage() {
           w={280}
         />
         {selectedIds.size > 0 && (
-          <Button onClick={openModal}>Add {selectedIds.size} to review set</Button>
+          <>
+            <Button onClick={openModal}>Add {selectedIds.size} to review set</Button>
+            <Select
+              placeholder="Tag selected..."
+              size="sm"
+              w={160}
+              data={(tags ?? []).map((t) => ({ value: t.id, label: t.name }))}
+              value={bulkTagChoice}
+              onChange={(value) => {
+                setBulkTagChoice(value);
+                if (value) bulkTagMutation.mutate(value);
+              }}
+              disabled={bulkTagMutation.isPending}
+            />
+          </>
         )}
       </Group>
 
@@ -121,6 +166,8 @@ export function DocumentListPage() {
           documents={documents}
           selectedIds={selectedIds}
           onToggleSelect={toggleSelect}
+          onToggleSelectAll={toggleSelectAll}
+          onToggleFamily={toggleFamily}
         />
       )}
       {documents?.length === 0 && <Text c="dimmed">No documents match these filters.</Text>}

@@ -28,11 +28,13 @@ class ExportJobRead(BaseModel):
     id: uuid.UUID
     case_id: uuid.UUID
     review_set_id: uuid.UUID | None
+    production_number: int
     export_type: ExportType
     apply_bates: bool
     bates_prefix: str
     bates_start_number: int
     bates_digit_padding: int
+    bates_end_number: int | None
     document_ids: list[uuid.UUID]
     status: ExportStatus
     output_storage_path: str

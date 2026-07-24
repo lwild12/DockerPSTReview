@@ -15,7 +15,7 @@ from app.models.case import CaseMembership
 from app.models.document import Document
 from app.models.tag import DocumentTag, Tag
 from app.models.user import User
-from app.schemas.tag import TagCreate, TagRead, TagUpdate
+from app.schemas.tag import TagBulkApply, TagCreate, TagRead, TagUpdate
 from app.services.audit import record_audit
 
 router = APIRouter(prefix="/cases/{case_id}/tags", tags=["tags"])
@@ -58,6 +58,52 @@ async def create_tag(
     await db.commit()
     await db.refresh(tag)
     return tag
+
+
+@router.post("/{tag_id}/apply-bulk")
+async def apply_tag_bulk(
+    case_id: uuid.UUID,
+    tag_id: uuid.UUID,
+    payload: TagBulkApply,
+    _membership: CaseMembership = Depends(require_case_reviewer_or_admin),
+    user: User = Depends(current_active_user),
+    db: AsyncSession = Depends(get_db),
+):
+    tag = await db.get(Tag, tag_id)
+    if tag is None or tag.case_id != case_id:
+        raise HTTPException(status_code=404, detail="Tag not found")
+
+    valid_docs = await db.execute(
+        select(Document.id).where(
+            Document.id.in_(payload.document_ids), Document.case_id == case_id
+        )
+    )
+    valid_ids = {row[0] for row in valid_docs.all()}
+
+    existing_links = await db.execute(
+        select(DocumentTag.document_id).where(
+            DocumentTag.tag_id == tag_id, DocumentTag.document_id.in_(valid_ids)
+        )
+    )
+    already_tagged = {row[0] for row in existing_links.all()}
+
+    newly_tagged = valid_ids - already_tagged
+    for document_id in newly_tagged:
+        db.add(DocumentTag(document_id=document_id, tag_id=tag_id, tagged_by_id=user.id))
+
+    if newly_tagged:
+        record_audit(
+            db,
+            case_id,
+            user.id,
+            "tag.applied_bulk",
+            "tag",
+            str(tag_id),
+            {"document_ids": [str(d) for d in newly_tagged]},
+        )
+        await db.commit()
+
+    return {"tagged_count": len(newly_tagged)}
 
 
 @router.patch("/{tag_id}", response_model=TagRead)

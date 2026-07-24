@@ -131,3 +131,67 @@ async def test_redaction_spanning_multiple_pages_creates_multiple_rows(client, d
     listed = await client.get(f"/api/cases/{case_id}/documents/{document.id}/redactions")
     assert len(listed.json()) == 2
     assert {r["page_number"] for r in listed.json()} == {0, 1}
+
+
+async def test_case_redaction_log_lists_across_documents_with_document_info(client, db_session):
+    case_id = await _setup_case(client)
+    doc1 = await _seed_document(db_session, case_id)
+    doc1.subject = "First doc"
+    doc1.sender = "alice@example.com"
+    doc2 = await _seed_document(db_session, case_id)
+    doc2.subject = "Second doc"
+    doc2.sender = "bob@example.com"
+    await db_session.commit()
+
+    await client.post(
+        f"/api/cases/{case_id}/documents/{doc1.id}/redactions",
+        json={"page_number": 0, "x": 0, "y": 0, "width": 10, "height": 10, "reason": "PII"},
+    )
+    await client.post(
+        f"/api/cases/{case_id}/documents/{doc2.id}/redactions",
+        json={"page_number": 1, "x": 5, "y": 5, "width": 20, "height": 20, "reason": "Privileged"},
+    )
+
+    log = await client.get(f"/api/cases/{case_id}/redactions")
+    assert log.status_code == 200
+    entries = log.json()
+    assert len(entries) == 2
+    by_subject = {e["document_subject"]: e for e in entries}
+    assert by_subject["First doc"]["reason"] == "PII"
+    assert by_subject["First doc"]["document_sender"] == "alice@example.com"
+    assert by_subject["First doc"]["created_by_email"] == "admin@example.com"
+    assert by_subject["Second doc"]["reason"] == "Privileged"
+
+
+async def test_case_redaction_log_csv_export(client, db_session):
+    case_id = await _setup_case(client)
+    document = await _seed_document(db_session, case_id)
+    document.subject = "Exportable doc"
+    await db_session.commit()
+    await client.post(
+        f"/api/cases/{case_id}/documents/{document.id}/redactions",
+        json={"page_number": 0, "x": 0, "y": 0, "width": 10, "height": 10, "reason": "SSN"},
+    )
+
+    csv_resp = await client.get(f"/api/cases/{case_id}/redactions/export.csv")
+    assert csv_resp.status_code == 200
+    assert csv_resp.headers["content-type"].startswith("text/csv")
+    body = csv_resp.text
+    assert "Exportable doc" in body
+    assert "SSN" in body
+    assert "admin@example.com" in body
+
+
+async def test_case_redaction_log_excludes_other_cases(client, db_session):
+    case_id = await _setup_case(client)
+    other_case_resp = await client.post("/api/cases", json={"name": "Other case"})
+    other_case_id = other_case_resp.json()["id"]
+    other_doc = await _seed_document(db_session, other_case_id)
+    await client.post(
+        f"/api/cases/{other_case_id}/documents/{other_doc.id}/redactions",
+        json={"page_number": 0, "x": 0, "y": 0, "width": 10, "height": 10},
+    )
+
+    log = await client.get(f"/api/cases/{case_id}/redactions")
+    assert log.status_code == 200
+    assert log.json() == []

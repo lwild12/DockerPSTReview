@@ -171,6 +171,51 @@ async def test_export_production_set_applies_sequential_bates_and_writes_log(db_
     assert bates_rows[doc2.id].bates_start == "ABC000002"
 
 
+async def test_export_production_set_records_next_bates_number(db_session, tmp_path):
+    user, case, custodian = await _make_case(db_session)
+
+    two_page_pdf = fitz.open()
+    two_page_pdf.new_page(width=612, height=792).insert_text((72, 72), "Page one")
+    two_page_pdf.new_page(width=612, height=792).insert_text((72, 72), "Page two")
+    two_page_path = tmp_path / "two_pages.pdf"
+    two_page_pdf.save(str(two_page_path))
+
+    doc1 = Document(
+        id=uuid.uuid4(),
+        case_id=case.id,
+        custodian_id=custodian.id,
+        doc_type=DocType.email,
+        subject="A",
+        content_hash=str(uuid.uuid4()),
+        rendered_pdf_path=str(two_page_path),
+        rendered_pdf_page_count=2,
+    )
+    db_session.add(doc1)
+    await db_session.flush()
+
+    job = ExportJob(
+        id=uuid.uuid4(),
+        case_id=case.id,
+        export_type=ExportType.production_set,
+        apply_bates=True,
+        bates_prefix="ABC",
+        bates_start_number=1,
+        bates_digit_padding=6,
+        document_ids=[str(doc1.id)],
+        requested_by_id=user.id,
+    )
+    db_session.add(job)
+    await db_session.commit()
+
+    await run_export(job.id, db_session)
+
+    refreshed = await db_session.get(ExportJob, job.id)
+    assert refreshed.status == ExportStatus.completed
+    # doc1 has 2 pages, so Bates numbers 1 and 2 are used; the next free
+    # number for a follow-up production with the same prefix is 3.
+    assert refreshed.bates_end_number == 3
+
+
 async def test_export_production_set_without_bates_uses_document_id_filenames(db_session, tmp_path):
     user, case, custodian = await _make_case(db_session)
     doc = Document(

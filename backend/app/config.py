@@ -15,6 +15,10 @@ class Settings(BaseSettings):
     storage_root: str = "/data"
     backend_cors_origins: str = "http://localhost"
     enable_api_docs: bool = False
+    # Fernet key encrypting the OIDC client secret at rest (see app/services/encryption.py).
+    # Generate one with:
+    #   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+    secret_encryption_key: str = ""
 
     @property
     def cors_origins(self) -> list[str]:

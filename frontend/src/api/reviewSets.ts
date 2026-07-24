@@ -24,6 +24,7 @@ export interface ReviewSetDocument {
   document_sender: string;
   document_doc_type: string;
   document_sent_at: string | null;
+  document_parent_document_id: string | null;
 }
 
 export async function listReviewSets(caseId: string): Promise<ReviewSet[]> {
@@ -61,6 +62,21 @@ export async function addDocumentsToReviewSet(
     method: "POST",
     body: JSON.stringify({ document_ids: documentIds }),
   });
+}
+
+export async function bulkUpdateReviewStatus(
+  caseId: string,
+  reviewSetId: string,
+  documentIds: string[],
+  reviewStatus: ReviewStatus,
+): Promise<ReviewSetDocument[]> {
+  return apiFetch<ReviewSetDocument[]>(
+    `/cases/${caseId}/review-sets/${reviewSetId}/documents/bulk-review-status`,
+    {
+      method: "POST",
+      body: JSON.stringify({ document_ids: documentIds, review_status: reviewStatus }),
+    },
+  );
 }
 
 export async function updateReviewSetDocument(

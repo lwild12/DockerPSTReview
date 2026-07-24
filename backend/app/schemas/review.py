@@ -32,6 +32,11 @@ class ReviewSetDocumentUpdate(BaseModel):
     notes: str | None = None
 
 
+class ReviewSetBulkStatusUpdate(BaseModel):
+    document_ids: list[uuid.UUID]
+    review_status: ReviewStatus
+
+
 class ReviewSetDocumentRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -47,3 +52,4 @@ class ReviewSetDocumentRead(BaseModel):
     document_sender: str = ""
     document_doc_type: str = ""
     document_sent_at: datetime | None = None
+    document_parent_document_id: uuid.UUID | None = None

@@ -236,6 +236,9 @@ cat <<EOF
   then log in. (Full walkthrough: README.md, steps 5-6.)
 
   Secrets live in: ${REPO_DIR}/.env  (back this up)
+
+  To pick up future updates without a full reset, run:
+    cd ${REPO_DIR} && sudo ./update.sh
 ----------------------------------------------------------------------
 EOF
 
