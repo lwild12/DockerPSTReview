@@ -9,6 +9,7 @@ from app.models.review import ReviewSet, ReviewSetDocument, ReviewStatus
 from app.models.system_settings import SystemSettings
 from app.models.tag import DocumentTag, Tag
 from app.models.user import User
+from app.models.user_presets import UserRedactionReasonPreset, UserTagPreset
 
 __all__ = [
     "AuditLog",
@@ -37,4 +38,6 @@ __all__ = [
     "Tag",
     "Thread",
     "User",
+    "UserRedactionReasonPreset",
+    "UserTagPreset",
 ]

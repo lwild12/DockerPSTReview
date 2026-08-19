@@ -21,6 +21,7 @@ from app.api.routers import (
     redactions,
     review_sets,
     tags,
+    user_presets,
 )
 from app.config import DEFAULT_JWT_SECRET, get_settings
 from app.db import get_db
@@ -97,6 +98,7 @@ app.include_router(redactions.router, prefix="/api")
 app.include_router(redactions.case_log_router, prefix="/api")
 app.include_router(export_jobs.router, prefix="/api")
 app.include_router(audit.router, prefix="/api")
+app.include_router(user_presets.router, prefix="/api")
 
 
 @app.get("/healthz")

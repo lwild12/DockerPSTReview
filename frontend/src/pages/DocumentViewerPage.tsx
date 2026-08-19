@@ -1,5 +1,6 @@
 import {
   Anchor,
+  Autocomplete,
   Badge,
   Button,
   Container,
@@ -10,7 +11,6 @@ import {
   Spoiler,
   Stack,
   Text,
-  TextInput,
   Title,
 } from "@mantine/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -30,6 +30,7 @@ import {
   type ReviewSetDocument,
   type ReviewStatus,
 } from "../api/reviewSets";
+import { listRedactionReasonPresets } from "../api/userPresets";
 import { CodingForm } from "../components/CodingForm";
 import { PdfViewer } from "../components/PdfViewer";
 import { TagHotkeyBar } from "../components/TagHotkeyBar";
@@ -65,6 +66,12 @@ export function DocumentViewerPage() {
     queryKey: ["review-set-documents", caseId, reviewSetId],
     queryFn: () => listReviewSetDocuments(caseId, reviewSetId),
     enabled: enabled && reviewSetId !== "",
+  });
+
+  const { data: reasonPresets } = useQuery({
+    queryKey: ["redaction-reason-presets"],
+    queryFn: listRedactionReasonPresets,
+    enabled: redactionMode,
   });
 
   // Attachments have no sent_at, so the API's own ordering sorts them all
@@ -285,12 +292,13 @@ export function DocumentViewerPage() {
                             { label: "Select text", value: "select" },
                           ]}
                         />
-                        <TextInput
+                        <Autocomplete
                           size="xs"
                           w={200}
                           placeholder="Reason (e.g. PII, Privileged)"
+                          data={(reasonPresets ?? []).map((p) => p.reason)}
                           value={redactionReason}
-                          onChange={(e) => setRedactionReason(e.currentTarget.value)}
+                          onChange={setRedactionReason}
                         />
                       </>
                     )}
