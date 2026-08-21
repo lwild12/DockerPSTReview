@@ -17,6 +17,7 @@ from app.models.tag import DocumentTag, Tag
 from app.models.user import User
 from app.schemas.tag import TagBulkApply, TagCreate, TagRead, TagUpdate
 from app.services.audit import record_audit
+from app.services.user_presets import upsert_tag_preset
 
 router = APIRouter(prefix="/cases/{case_id}/tags", tags=["tags"])
 document_tags_router = APIRouter(
@@ -55,6 +56,7 @@ async def create_tag(
     db.add(tag)
     await db.flush()
     record_audit(db, case_id, user.id, "tag.created", "tag", str(tag.id), {"name": tag.name})
+    await upsert_tag_preset(db, user.id, tag.name, tag.color)
     await db.commit()
     await db.refresh(tag)
     return tag

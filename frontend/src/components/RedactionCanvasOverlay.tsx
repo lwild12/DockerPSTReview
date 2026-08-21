@@ -1,8 +1,10 @@
-import { ActionIcon, Button, Popover, Stack, TextInput } from "@mantine/core";
+import { ActionIcon, Autocomplete, Button, Popover, Stack } from "@mantine/core";
 import { IconX } from "@tabler/icons-react";
+import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
 import type { Redaction } from "../api/redactions";
+import { listRedactionReasonPresets } from "../api/userPresets";
 
 interface DraftRect {
   startX: number;
@@ -22,6 +24,11 @@ function ReasonEditor({
 }) {
   const [opened, setOpened] = useState(false);
   const [reason, setReason] = useState(redaction.reason);
+  const { data: reasonPresets } = useQuery({
+    queryKey: ["redaction-reason-presets"],
+    queryFn: listRedactionReasonPresets,
+    enabled: opened,
+  });
 
   return (
     <Popover
@@ -44,12 +51,13 @@ function ReasonEditor({
       </Popover.Target>
       <Popover.Dropdown onClick={(e) => e.stopPropagation()}>
         <Stack gap="xs" w={220}>
-          <TextInput
+          <Autocomplete
             size="xs"
             label="Reason for this redaction"
             placeholder="e.g. PII, Privileged"
+            data={(reasonPresets ?? []).map((p) => p.reason)}
             value={reason}
-            onChange={(e) => setReason(e.currentTarget.value)}
+            onChange={setReason}
             autoFocus
             onKeyDown={(e) => {
               if (e.key === "Enter") {

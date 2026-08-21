@@ -4,6 +4,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 
 import { applyTag, createTag, listTags, removeTag } from "../api/tags";
+import { listTagPresets } from "../api/userPresets";
+
+const PRESET_PREFIX = "preset:";
 
 export function TagPicker({
   caseId,
@@ -21,6 +24,11 @@ export function TagPicker({
   const { data: allTags } = useQuery({
     queryKey: ["tags", caseId],
     queryFn: () => listTags(caseId),
+  });
+
+  const { data: tagPresets } = useQuery({
+    queryKey: ["tag-presets"],
+    queryFn: listTagPresets,
   });
 
   const invalidateDocument = () => {
@@ -43,7 +51,8 @@ export function TagPicker({
   });
 
   const createMutation = useMutation({
-    mutationFn: (name: string) => createTag(caseId, name),
+    mutationFn: ({ name, color }: { name: string; color?: string }) =>
+      createTag(caseId, name, color),
     onSuccess: (tag) => {
       setNewTagName("");
       applyMutation.mutate(tag.id);
@@ -51,9 +60,20 @@ export function TagPicker({
   });
 
   const appliedIds = new Set(appliedTags.map((t) => t.id));
+  const existingNames = new Set((allTags ?? []).map((t) => t.name.toLowerCase()));
   const availableOptions = (allTags ?? [])
     .filter((t) => !appliedIds.has(t.id))
     .map((t) => ({ value: t.id, label: t.name }));
+  const presetOptions = (tagPresets ?? [])
+    .filter((p) => !existingNames.has(p.name.toLowerCase()))
+    .map((p) => ({ value: `${PRESET_PREFIX}${p.name}`, label: `${p.name} (your preset)` }));
+  const selectData =
+    presetOptions.length > 0
+      ? [
+          { group: "Case tags", items: availableOptions },
+          { group: "Your presets", items: presetOptions },
+        ]
+      : availableOptions;
 
   return (
     <Group gap="xs" wrap="wrap">
@@ -78,12 +98,19 @@ export function TagPicker({
       <Select
         placeholder="Add tag"
         size="xs"
-        w={140}
+        w={160}
         searchable
-        data={availableOptions}
+        data={selectData}
         value={selectedTagId}
         onChange={(value) => {
-          if (value) applyMutation.mutate(value);
+          if (!value) return;
+          if (value.startsWith(PRESET_PREFIX)) {
+            const name = value.slice(PRESET_PREFIX.length);
+            const preset = (tagPresets ?? []).find((p) => p.name === name);
+            createMutation.mutate({ name, color: preset?.color });
+          } else {
+            applyMutation.mutate(value);
+          }
         }}
       />
       <TextInput
@@ -94,7 +121,7 @@ export function TagPicker({
         onChange={(e) => setNewTagName(e.currentTarget.value)}
         onKeyDown={(e) => {
           if (e.key === "Enter" && newTagName.trim()) {
-            createMutation.mutate(newTagName.trim());
+            createMutation.mutate({ name: newTagName.trim() });
           }
         }}
         rightSection={
@@ -102,7 +129,9 @@ export function TagPicker({
             size="xs"
             variant="transparent"
             disabled={!newTagName.trim()}
-            onClick={() => newTagName.trim() && createMutation.mutate(newTagName.trim())}
+            onClick={() =>
+              newTagName.trim() && createMutation.mutate({ name: newTagName.trim() })
+            }
           >
             <IconPlus size={12} />
           </ActionIcon>

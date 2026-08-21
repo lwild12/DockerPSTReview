@@ -21,6 +21,7 @@ from app.schemas.redaction import (
     RedactionUpdate,
 )
 from app.services.audit import record_audit
+from app.services.user_presets import upsert_redaction_reason_preset
 
 router = APIRouter(
     prefix="/cases/{case_id}/documents/{document_id}/redactions", tags=["redactions"]
@@ -91,6 +92,7 @@ async def create_redaction(
         str(document_id),
         {"redaction_id": str(redaction.id), "page_number": redaction.page_number},
     )
+    await upsert_redaction_reason_preset(db, user.id, redaction.reason)
     await db.commit()
     await db.refresh(redaction)
     return redaction
@@ -125,6 +127,8 @@ async def update_redaction(
         str(document_id),
         {"redaction_id": str(redaction.id)},
     )
+    if payload.reason is not None:
+        await upsert_redaction_reason_preset(db, user.id, redaction.reason)
     await db.commit()
     await db.refresh(redaction)
     return redaction
