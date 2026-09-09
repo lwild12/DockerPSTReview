@@ -19,6 +19,8 @@ export interface DocumentListItem {
   render_error: string;
   ocr_status: OcrStatus;
   has_native_file: boolean;
+  is_inclusive_email: boolean;
+  near_duplicate_cluster_id: string | null;
   tags: TagRead[];
 }
 
@@ -68,6 +70,8 @@ export interface DocumentFilters {
   dedup_status?: DedupStatus;
   thread_id?: string;
   tag_id?: string;
+  is_inclusive_email?: boolean;
+  near_duplicate_cluster_id?: string;
   q?: string;
   page?: number;
   page_size?: number;

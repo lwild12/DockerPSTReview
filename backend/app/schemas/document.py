@@ -23,6 +23,8 @@ class DocumentListItem(BaseModel):
     render_error: str
     ocr_status: OcrStatus
     has_native_file: bool = False
+    is_inclusive_email: bool = True
+    near_duplicate_cluster_id: uuid.UUID | None = None
     tags: list[TagRead] = []
 
 
@@ -62,6 +64,8 @@ class DocumentDetail(BaseModel):
     ocr_error: str
     has_native_file: bool = False
     attachment_count: int = 0
+    is_inclusive_email: bool = True
+    near_duplicate_cluster_id: uuid.UUID | None = None
     tags: list[TagRead] = []
 
 

@@ -113,6 +113,16 @@ export function DocumentTable({
                   OCR failed
                 </Badge>
               )}
+              {doc.doc_type === "email" && !doc.is_inclusive_email && (
+                <Badge size="sm" color="gray" variant="light" ml={4}>
+                  redundant
+                </Badge>
+              )}
+              {doc.near_duplicate_cluster_id && (
+                <Badge size="sm" color="grape" variant="light" ml={4}>
+                  similar
+                </Badge>
+              )}
             </Table.Td>
             <Table.Td onClick={() => navigate(`/cases/${caseId}/documents/${doc.id}`)}>
               {doc.tags.map((tag) => (

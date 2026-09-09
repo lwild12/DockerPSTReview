@@ -1,4 +1,5 @@
 import {
+  Badge,
   Button,
   Center,
   Container,
@@ -12,10 +13,10 @@ import {
   Title,
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
-import { IconMailOff } from "@tabler/icons-react";
+import { IconMailOff, IconX } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useSearchParams } from "react-router-dom";
 
 import { listDocuments, type DedupStatus, type DocType } from "../api/documents";
 import { addDocumentsToReviewSet, createReviewSet, listReviewSets } from "../api/reviewSets";
@@ -26,9 +27,12 @@ import { EmptyState } from "../components/EmptyState";
 export function DocumentListPage() {
   const { caseId = "" } = useParams<{ caseId: string }>();
   const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [docType, setDocType] = useState<string | null>(null);
   const [dedupStatus, setDedupStatus] = useState<string | null>(null);
+  const [inclusiveFilter, setInclusiveFilter] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const clusterFilter = searchParams.get("near_duplicate_cluster_id");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [modalOpened, { open: openModal, close: closeModal }] = useDisclosure(false);
   const [reviewSetChoice, setReviewSetChoice] = useState<string | null>(null);
@@ -36,11 +40,13 @@ export function DocumentListPage() {
   const [bulkTagChoice, setBulkTagChoice] = useState<string | null>(null);
 
   const { data: documents, isLoading } = useQuery({
-    queryKey: ["documents", caseId, docType, dedupStatus, search],
+    queryKey: ["documents", caseId, docType, dedupStatus, inclusiveFilter, clusterFilter, search],
     queryFn: () =>
       listDocuments(caseId, {
         doc_type: (docType as DocType) || undefined,
         dedup_status: (dedupStatus as DedupStatus) || undefined,
+        is_inclusive_email: inclusiveFilter ? inclusiveFilter === "true" : undefined,
+        near_duplicate_cluster_id: clusterFilter || undefined,
         q: search || undefined,
       }),
     enabled: caseId !== "",
@@ -132,6 +138,17 @@ export function DocumentListPage() {
           onChange={setDedupStatus}
           w={180}
         />
+        <Select
+          placeholder="All thread messages"
+          clearable
+          data={[
+            { value: "true", label: "Hide redundant thread messages" },
+            { value: "false", label: "Only redundant thread messages" },
+          ]}
+          value={inclusiveFilter}
+          onChange={setInclusiveFilter}
+          w={240}
+        />
         <TextInput
           placeholder="Search subject/body/sender"
           value={search}
@@ -156,6 +173,29 @@ export function DocumentListPage() {
           </>
         )}
       </Group>
+
+      {clusterFilter && (
+        <Badge
+          size="lg"
+          variant="light"
+          mb="md"
+          rightSection={
+            <IconX
+              size={12}
+              style={{ cursor: "pointer" }}
+              onClick={() =>
+                setSearchParams((prev) => {
+                  const next = new URLSearchParams(prev);
+                  next.delete("near_duplicate_cluster_id");
+                  return next;
+                })
+              }
+            />
+          }
+        >
+          Showing near-duplicates of this document
+        </Badge>
+      )}
 
       {isLoading && (
         <Center py={60}>

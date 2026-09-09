@@ -57,6 +57,8 @@ async def list_documents(
     dedup_status: DedupStatus | None = None,
     thread_id: uuid.UUID | None = None,
     tag_id: uuid.UUID | None = None,
+    is_inclusive_email: bool | None = None,
+    near_duplicate_cluster_id: uuid.UUID | None = None,
     q: str | None = None,
     page: int = 1,
     page_size: int = 50,
@@ -72,6 +74,10 @@ async def list_documents(
         stmt = stmt.where(Document.dedup_status == dedup_status)
     if thread_id is not None:
         stmt = stmt.where(Document.thread_id == thread_id)
+    if is_inclusive_email is not None:
+        stmt = stmt.where(Document.is_inclusive_email == is_inclusive_email)
+    if near_duplicate_cluster_id is not None:
+        stmt = stmt.where(Document.near_duplicate_cluster_id == near_duplicate_cluster_id)
     if tag_id is not None:
         stmt = stmt.join(DocumentTag, DocumentTag.document_id == Document.id).where(
             DocumentTag.tag_id == tag_id

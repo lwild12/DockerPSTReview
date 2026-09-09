@@ -2,7 +2,17 @@ import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import BigInteger, Computed, DateTime, Enum, ForeignKey, Integer, String, Text
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    Computed,
+    DateTime,
+    Enum,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+)
 from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -43,6 +53,14 @@ class Thread(UUIDPKMixin, TimestampMixin, Base):
     participant_hash: Mapped[str] = mapped_column(String(64), default="")
 
 
+class NearDuplicateCluster(UUIDPKMixin, TimestampMixin, Base):
+    __tablename__ = "near_duplicate_clusters"
+
+    case_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("cases.id", ondelete="CASCADE")
+    )
+
+
 class Document(UUIDPKMixin, TimestampMixin, Base):
     __tablename__ = "documents"
 
@@ -62,6 +80,13 @@ class Document(UUIDPKMixin, TimestampMixin, Base):
     thread_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("threads.id"), nullable=True
     )
+    near_duplicate_cluster_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("near_duplicate_clusters.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    is_inclusive_email: Mapped[bool] = mapped_column(Boolean, default=True)
 
     subject: Mapped[str] = mapped_column(String(1000), default="")
     sender: Mapped[str] = mapped_column(String(500), default="")
