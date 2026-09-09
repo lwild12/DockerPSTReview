@@ -3,9 +3,11 @@ import {
   Badge,
   Button,
   Card,
+  Center,
   Checkbox,
   Container,
   Group,
+  Loader,
   Modal,
   Select,
   Stack,
@@ -15,20 +17,22 @@ import {
   Title,
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
-import { IconPaperclip } from "@tabler/icons-react";
+import { IconFileOff, IconListCheck, IconPaperclip } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 
 import {
   bulkUpdateReviewStatus,
   createReviewSet,
+  getReviewSet,
   listReviewSetDocuments,
   listReviewSets,
   updateReviewSetDocument,
   type ReviewSetDocument,
   type ReviewStatus,
 } from "../api/reviewSets";
+import { EmptyState } from "../components/EmptyState";
 import { childrenByParent, groupIntoFamilies } from "../lib/documentFamilies";
 
 const STATUS_COLOR: Record<ReviewStatus, string> = {
@@ -37,6 +41,56 @@ const STATUS_COLOR: Record<ReviewStatus, string> = {
   reviewed: "green",
   flagged: "red",
 };
+
+const STATUS_RANK: Record<ReviewStatus, number> = {
+  unreviewed: 0,
+  in_review: 1,
+  flagged: 2,
+  reviewed: 3,
+};
+
+type SortOption = "sent_desc" | "sent_asc" | "subject_asc" | "subject_desc" | "status";
+
+const SORT_OPTIONS: { value: SortOption; label: string }[] = [
+  { value: "sent_desc", label: "Sent (newest first)" },
+  { value: "sent_asc", label: "Sent (oldest first)" },
+  { value: "subject_asc", label: "Subject (A–Z)" },
+  { value: "subject_desc", label: "Subject (Z–A)" },
+  { value: "status", label: "Status (needs review first)" },
+];
+
+function sortReviewSetDocuments(
+  documents: ReviewSetDocument[],
+  sortBy: SortOption,
+): ReviewSetDocument[] {
+  const sorted = [...documents];
+  switch (sortBy) {
+    case "sent_asc":
+      sorted.sort(
+        (a, b) =>
+          (a.document_sent_at ? new Date(a.document_sent_at).getTime() : 0) -
+          (b.document_sent_at ? new Date(b.document_sent_at).getTime() : 0),
+      );
+      break;
+    case "sent_desc":
+      sorted.sort(
+        (a, b) =>
+          (b.document_sent_at ? new Date(b.document_sent_at).getTime() : 0) -
+          (a.document_sent_at ? new Date(a.document_sent_at).getTime() : 0),
+      );
+      break;
+    case "subject_asc":
+      sorted.sort((a, b) => a.document_subject.localeCompare(b.document_subject));
+      break;
+    case "subject_desc":
+      sorted.sort((a, b) => b.document_subject.localeCompare(a.document_subject));
+      break;
+    case "status":
+      sorted.sort((a, b) => STATUS_RANK[a.review_status] - STATUS_RANK[b.review_status]);
+      break;
+  }
+  return sorted;
+}
 
 export function ReviewSetsPage() {
   const { caseId = "" } = useParams<{ caseId: string }>();
@@ -61,15 +115,16 @@ export function ReviewSetsPage() {
 
   return (
     <Container size="md" py="xl">
-      <Anchor component={Link} to={`/cases/${caseId}`} size="sm">
-        ← Back to case
-      </Anchor>
-      <Group justify="space-between" mt="sm" mb="lg">
+      <Group justify="space-between" mb="lg">
         <Title order={2}>Review sets</Title>
         <Button onClick={open}>New review set</Button>
       </Group>
 
-      {isLoading && <Text>Loading...</Text>}
+      {isLoading && (
+        <Center py={60}>
+          <Loader />
+        </Center>
+      )}
       <Stack>
         {reviewSets?.map((rs) => (
           <Card key={rs.id} component={Link} to={`/cases/${caseId}/review-sets/${rs.id}`} withBorder>
@@ -81,7 +136,13 @@ export function ReviewSetsPage() {
             )}
           </Card>
         ))}
-        {reviewSets?.length === 0 && <Text c="dimmed">No review sets yet.</Text>}
+        {reviewSets?.length === 0 && (
+          <EmptyState
+            icon={IconListCheck}
+            title="No review sets yet"
+            description="Create a review set to start tagging, redacting, and tracking review status for a group of documents."
+          />
+        )}
       </Stack>
 
       <Modal opened={opened} onClose={close} title="New review set">
@@ -111,10 +172,18 @@ export function ReviewSetsPage() {
 export function ReviewSetDetailPage() {
   const { caseId = "", reviewSetId = "" } = useParams<{ caseId: string; reviewSetId: string }>();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const enabled = caseId !== "" && reviewSetId !== "";
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkStatusChoice, setBulkStatusChoice] = useState<string | null>(null);
+  const [sortBy, setSortBy] = useState<SortOption>("sent_desc");
+
+  const { data: reviewSet } = useQuery({
+    queryKey: ["review-set", caseId, reviewSetId],
+    queryFn: () => getReviewSet(caseId, reviewSetId),
+    enabled,
+  });
 
   const { data: documents, isLoading } = useQuery({
     queryKey: ["review-set-documents", caseId, reviewSetId],
@@ -167,16 +236,22 @@ export function ReviewSetDetailPage() {
 
   const rsGetId = (d: ReviewSetDocument) => d.document_id;
   const rsGetParentId = (d: ReviewSetDocument) => d.document_parent_document_id;
-  const familyRows = groupIntoFamilies(documents ?? [], rsGetId, rsGetParentId);
-  const familyChildren = childrenByParent(documents ?? [], rsGetParentId);
+  const sortedDocuments = sortReviewSetDocuments(documents ?? [], sortBy);
+  const familyRows = groupIntoFamilies(sortedDocuments, rsGetId, rsGetParentId);
+  const familyChildren = childrenByParent(sortedDocuments, rsGetParentId);
+
+  const firstUnreviewed = familyRows.find((row) => row.item.review_status === "unreviewed");
+  const goToFirstUnreviewed = () => {
+    if (!firstUnreviewed) return;
+    navigate(
+      `/cases/${caseId}/documents/${firstUnreviewed.item.document_id}?reviewSet=${reviewSetId}`,
+    );
+  };
 
   return (
     <Container size="xl" py="xl">
-      <Anchor component={Link} to={`/cases/${caseId}/review-sets`} size="sm">
-        ← Back to review sets
-      </Anchor>
-      <Group justify="space-between" mt="sm" mb="lg">
-        <Title order={2}>Review set documents</Title>
+      <Group justify="space-between" mb="lg">
+        <Title order={2}>{reviewSet?.name ?? "Review set documents"}</Title>
         {selectedIds.size > 0 && (
           <Select
             placeholder={`Set status for ${selectedIds.size} selected...`}
@@ -193,7 +268,31 @@ export function ReviewSetDetailPage() {
         )}
       </Group>
 
-      {isLoading && <Text>Loading...</Text>}
+      <Group justify="space-between" mb="md">
+        <Select
+          size="sm"
+          w={220}
+          aria-label="Sort documents by"
+          data={SORT_OPTIONS}
+          value={sortBy}
+          allowDeselect={false}
+          onChange={(value) => value && setSortBy(value as SortOption)}
+        />
+        <Button
+          size="sm"
+          variant="light"
+          disabled={!firstUnreviewed}
+          onClick={goToFirstUnreviewed}
+        >
+          {firstUnreviewed ? "Jump to first unreviewed" : "All documents reviewed"}
+        </Button>
+      </Group>
+
+      {isLoading && (
+        <Center py={60}>
+          <Loader />
+        </Center>
+      )}
       {documents && documents.length > 0 && (
         <Table>
           <Table.Thead>
@@ -279,7 +378,13 @@ export function ReviewSetDetailPage() {
           </Table.Tbody>
         </Table>
       )}
-      {documents?.length === 0 && <Text c="dimmed">No documents in this review set yet.</Text>}
+      {documents?.length === 0 && (
+        <EmptyState
+          icon={IconFileOff}
+          title="No documents in this review set yet"
+          description="Add documents from the case's document list to start reviewing."
+        />
+      )}
     </Container>
   );
 }
