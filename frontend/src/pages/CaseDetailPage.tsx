@@ -20,6 +20,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent, type ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
 
+import { getCaseAnalytics, recomputeCaseAnalytics } from "../api/analytics";
 import {
   addMember,
   createCustodian,
@@ -134,6 +135,11 @@ export function CaseDetailPage() {
     queryFn: () => listReviewSets(caseId),
     enabled,
   });
+  const { data: analytics } = useQuery({
+    queryKey: ["case-analytics", caseId],
+    queryFn: () => getCaseAnalytics(caseId),
+    enabled,
+  });
 
   const isAdmin = caseData?.my_role === "admin";
   const canEdit = caseData?.my_role === "admin" || caseData?.my_role === "reviewer";
@@ -205,6 +211,13 @@ export function CaseDetailPage() {
       queryClient.invalidateQueries({ queryKey: ["review-sets", caseId] });
       setReviewSetName("");
       closeReviewSetModal();
+    },
+  });
+
+  const recomputeAnalyticsMutation = useMutation({
+    mutationFn: () => recomputeCaseAnalytics(caseId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["case-analytics", caseId] });
     },
   });
 
@@ -314,6 +327,44 @@ export function CaseDetailPage() {
           </Text>
         )}
       </StepCard>
+
+      <Card withBorder radius="md" p="lg" mb="md">
+        <Group justify="space-between" align="flex-start" mb="xs">
+          <div>
+            <Title order={4}>Review analytics</Title>
+            <Text size="sm" c="dimmed">
+              Finds near-duplicate documents and marks redundant thread messages (ones whose
+              content is fully quoted in a later message) so they can be filtered out of review.
+              Run this whenever you want it refreshed — it doesn't run automatically.
+            </Text>
+          </div>
+          {canEdit && (
+            <Button
+              size="xs"
+              variant="light"
+              onClick={() => recomputeAnalyticsMutation.mutate()}
+              loading={recomputeAnalyticsMutation.isPending}
+              disabled={!stats || stats.documents_total === 0}
+            >
+              {analytics?.computed_at ? "Recompute" : "Compute now"}
+            </Button>
+          )}
+        </Group>
+        {analytics?.computed_at ? (
+          <Text size="sm">
+            <b>{analytics.near_duplicate_cluster_count}</b> near-duplicate group
+            {analytics.near_duplicate_cluster_count === 1 ? "" : "s"}, <b>
+              {analytics.non_inclusive_email_count}
+            </b>{" "}
+            redundant thread message{analytics.non_inclusive_email_count === 1 ? "" : "s"} — last
+            computed {new Date(analytics.computed_at).toLocaleString()}
+          </Text>
+        ) : (
+          <Text size="sm" c="dimmed">
+            Not computed yet for this case.
+          </Text>
+        )}
+      </Card>
 
       <StepCard
         number={3}

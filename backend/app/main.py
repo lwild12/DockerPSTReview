@@ -9,6 +9,7 @@ from sqlalchemy import select
 
 from app.api.routers import (
     admin,
+    analytics,
     audit,
     auth,
     cases,
@@ -89,6 +90,8 @@ app.include_router(custodians.router, prefix="/api")
 app.include_router(import_jobs.router, prefix="/api")
 app.include_router(documents.router, prefix="/api")
 app.include_router(documents.threads_router, prefix="/api")
+app.include_router(analytics.router, prefix="/api")
+app.include_router(analytics.clusters_router, prefix="/api")
 app.include_router(tags.router, prefix="/api")
 app.include_router(tags.document_tags_router, prefix="/api")
 app.include_router(coding_fields.router, prefix="/api")

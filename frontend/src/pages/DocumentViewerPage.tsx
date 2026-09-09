@@ -33,6 +33,7 @@ import {
 import { listRedactionReasonPresets } from "../api/userPresets";
 import { AttachmentPanel } from "../components/AttachmentPanel";
 import { CodingForm } from "../components/CodingForm";
+import { NearDuplicatesPanel } from "../components/NearDuplicatesPanel";
 import { PdfViewer } from "../components/PdfViewer";
 import { TagHotkeyBar } from "../components/TagHotkeyBar";
 import { TagPicker } from "../components/TagPicker";
@@ -161,7 +162,9 @@ export function DocumentViewerPage() {
   });
 
   const showAttachmentPanel = !!document && (document.doc_type === "attachment" || document.attachment_count > 0);
-  const showContextPanel = !!document && (!!document.thread_id || showAttachmentPanel);
+  const showNearDuplicatesPanel = !!document && !!document.near_duplicate_cluster_id;
+  const showContextPanel =
+    !!document && (!!document.thread_id || showAttachmentPanel || showNearDuplicatesPanel);
 
   return (
     <Container size="xl" py="xl">
@@ -254,6 +257,11 @@ export function DocumentViewerPage() {
             {document.dedup_status === "duplicate" && (
               <Badge color="orange" w="fit-content">
                 Duplicate of another document
+              </Badge>
+            )}
+            {document.doc_type === "email" && !document.is_inclusive_email && (
+              <Badge color="gray" variant="light" w="fit-content">
+                This message's content is fully quoted in a later message in this thread
               </Badge>
             )}
           </Stack>
@@ -356,6 +364,13 @@ export function DocumentViewerPage() {
                   )}
                   {showAttachmentPanel && (
                     <AttachmentPanel
+                      caseId={caseId}
+                      document={document}
+                      reviewSetId={reviewSetId !== "" ? reviewSetId : undefined}
+                    />
+                  )}
+                  {showNearDuplicatesPanel && (
+                    <NearDuplicatesPanel
                       caseId={caseId}
                       document={document}
                       reviewSetId={reviewSetId !== "" ? reviewSetId : undefined}

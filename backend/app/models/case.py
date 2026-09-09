@@ -1,7 +1,8 @@
 import enum
 import uuid
+from datetime import datetime
 
-from sqlalchemy import Enum, ForeignKey, String, UniqueConstraint
+from sqlalchemy import DateTime, Enum, ForeignKey, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -21,6 +22,9 @@ class Case(UUIDPKMixin, TimestampMixin, Base):
     name: Mapped[str] = mapped_column(String(255))
     description: Mapped[str] = mapped_column(String(2000), default="")
     created_by_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    analytics_computed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     memberships: Mapped[list["CaseMembership"]] = relationship(
         back_populates="case", cascade="all, delete-orphan"
