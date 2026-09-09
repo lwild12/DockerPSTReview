@@ -18,7 +18,18 @@ export interface DocumentListItem {
   rendered_pdf_page_count: number;
   render_error: string;
   ocr_status: OcrStatus;
+  has_native_file: boolean;
   tags: TagRead[];
+}
+
+export interface AttachmentSummary {
+  id: string;
+  doc_type: DocType;
+  subject: string;
+  mime_type: string;
+  file_size: number;
+  render_error: string;
+  has_native_file: boolean;
 }
 
 export interface DocumentDetail extends DocumentListItem {
@@ -41,6 +52,7 @@ export interface DocumentDetail extends DocumentListItem {
   created_at: string;
   ocr_text: string;
   ocr_error: string;
+  attachment_count: number;
 }
 
 export interface ThreadSibling {
@@ -80,6 +92,18 @@ export async function getDocument(caseId: string, documentId: string): Promise<D
 export function documentPdfUrl(caseId: string, documentId: string): string {
   const base = import.meta.env.VITE_API_BASE_URL ?? "/api";
   return `${base}/cases/${caseId}/documents/${documentId}/pdf`;
+}
+
+export function documentNativeFileUrl(caseId: string, documentId: string): string {
+  const base = import.meta.env.VITE_API_BASE_URL ?? "/api";
+  return `${base}/cases/${caseId}/documents/${documentId}/native`;
+}
+
+export async function listDocumentAttachments(
+  caseId: string,
+  documentId: string,
+): Promise<AttachmentSummary[]> {
+  return apiFetch<AttachmentSummary[]>(`/cases/${caseId}/documents/${documentId}/attachments`);
 }
 
 export async function listThreadDocuments(

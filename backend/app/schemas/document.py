@@ -22,6 +22,7 @@ class DocumentListItem(BaseModel):
     rendered_pdf_page_count: int
     render_error: str
     ocr_status: OcrStatus
+    has_native_file: bool = False
     tags: list[TagRead] = []
 
 
@@ -59,7 +60,21 @@ class DocumentDetail(BaseModel):
     ocr_text: str
     ocr_status: OcrStatus
     ocr_error: str
+    has_native_file: bool = False
+    attachment_count: int = 0
     tags: list[TagRead] = []
+
+
+class AttachmentSummary(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    doc_type: DocType
+    subject: str
+    mime_type: str
+    file_size: int
+    render_error: str
+    has_native_file: bool = False
 
 
 class ThreadSibling(BaseModel):

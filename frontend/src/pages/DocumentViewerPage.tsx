@@ -31,6 +31,7 @@ import {
   type ReviewStatus,
 } from "../api/reviewSets";
 import { listRedactionReasonPresets } from "../api/userPresets";
+import { AttachmentPanel } from "../components/AttachmentPanel";
 import { CodingForm } from "../components/CodingForm";
 import { PdfViewer } from "../components/PdfViewer";
 import { TagHotkeyBar } from "../components/TagHotkeyBar";
@@ -159,6 +160,9 @@ export function DocumentViewerPage() {
     onSuccess: invalidateRedactions,
   });
 
+  const showAttachmentPanel = !!document && (document.doc_type === "attachment" || document.attachment_count > 0);
+  const showContextPanel = !!document && (!!document.thread_id || showAttachmentPanel);
+
   return (
     <Container size="xl" py="xl">
       <Group justify="space-between">
@@ -277,7 +281,7 @@ export function DocumentViewerPage() {
           )}
 
           <Grid mt="lg">
-            <Grid.Col span={document.thread_id ? 9 : 12}>
+            <Grid.Col span={showContextPanel ? 9 : 12}>
               {document.rendered_pdf_page_count > 0 ? (
                 <>
                   <Group justify="flex-end" mb="xs">
@@ -339,14 +343,25 @@ export function DocumentViewerPage() {
                 </Text>
               )}
             </Grid.Col>
-            {document.thread_id && (
+            {showContextPanel && (
               <Grid.Col span={3}>
-                <ThreadPanel
-                  caseId={caseId}
-                  threadId={document.thread_id}
-                  currentDocumentId={documentId}
-                  reviewSetId={reviewSetId !== "" ? reviewSetId : undefined}
-                />
+                <Stack gap="lg">
+                  {document.thread_id && (
+                    <ThreadPanel
+                      caseId={caseId}
+                      threadId={document.thread_id}
+                      currentDocumentId={documentId}
+                      reviewSetId={reviewSetId !== "" ? reviewSetId : undefined}
+                    />
+                  )}
+                  {showAttachmentPanel && (
+                    <AttachmentPanel
+                      caseId={caseId}
+                      document={document}
+                      reviewSetId={reviewSetId !== "" ? reviewSetId : undefined}
+                    />
+                  )}
+                </Stack>
               </Grid.Col>
             )}
           </Grid>

@@ -133,3 +133,78 @@ async def test_dedup_status_filter(client, db_session):
     assert resp.status_code == 200
     assert len(resp.json()) == 1
     assert resp.json()[0]["dedup_status"] == "duplicate"
+
+
+async def test_list_document_attachments(client, db_session):
+    _, case_id = await _setup_case(client)
+    email = await _seed_document(db_session, case_id, subject="Cover email")
+    attachment1 = await _seed_document(
+        db_session,
+        case_id,
+        doc_type=DocType.attachment,
+        parent_document_id=email.id,
+        subject="report.pdf",
+        mime_type="application/pdf",
+        file_size=1234,
+    )
+    await _seed_document(
+        db_session,
+        case_id,
+        doc_type=DocType.attachment,
+        parent_document_id=email.id,
+        subject="budget.xlsx",
+        mime_type="application/vnd.ms-excel",
+        file_size=5678,
+    )
+    await _seed_document(db_session, case_id, subject="unrelated email")
+
+    resp = await client.get(f"/api/cases/{case_id}/documents/{email.id}/attachments")
+    assert resp.status_code == 200
+    subjects = [a["subject"] for a in resp.json()]
+    assert subjects == ["budget.xlsx", "report.pdf"]
+    assert all(a["has_native_file"] is False for a in resp.json())
+
+    email_detail = await client.get(f"/api/cases/{case_id}/documents/{email.id}")
+    assert email_detail.json()["attachment_count"] == 2
+    attachment_detail = await client.get(f"/api/cases/{case_id}/documents/{attachment1.id}")
+    assert attachment_detail.json()["attachment_count"] == 0
+
+    empty_resp = await client.get(f"/api/cases/{case_id}/documents/{attachment1.id}/attachments")
+    assert empty_resp.status_code == 200
+    assert empty_resp.json() == []
+
+
+async def test_document_attachments_missing_parent_returns_404(client, db_session):
+    _, case_id = await _setup_case(client)
+    resp = await client.get(f"/api/cases/{case_id}/documents/{uuid.uuid4()}/attachments")
+    assert resp.status_code == 404
+
+
+async def test_get_document_native_file(client, db_session, tmp_path):
+    _, case_id = await _setup_case(client)
+    native_path = tmp_path / "report.pdf"
+    native_path.write_bytes(b"%PDF-1.4 fake native file content")
+    attachment = await _seed_document(
+        db_session,
+        case_id,
+        doc_type=DocType.attachment,
+        subject="report.pdf",
+        mime_type="application/pdf",
+        native_file_path=str(native_path),
+    )
+
+    detail = await client.get(f"/api/cases/{case_id}/documents/{attachment.id}")
+    assert detail.json()["has_native_file"] is True
+
+    resp = await client.get(f"/api/cases/{case_id}/documents/{attachment.id}/native")
+    assert resp.status_code == 200
+    assert resp.content == b"%PDF-1.4 fake native file content"
+    assert resp.headers["content-type"] == "application/pdf"
+    assert "report.pdf" in resp.headers["content-disposition"]
+
+
+async def test_get_document_native_file_missing_returns_404(client, db_session):
+    _, case_id = await _setup_case(client)
+    document = await _seed_document(db_session, case_id)
+    resp = await client.get(f"/api/cases/{case_id}/documents/{document.id}/native")
+    assert resp.status_code == 404

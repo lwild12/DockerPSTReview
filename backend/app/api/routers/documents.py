@@ -11,7 +11,7 @@ from app.db import get_db
 from app.models.case import CaseMembership
 from app.models.document import DedupStatus, DocType, Document, Thread
 from app.models.tag import DocumentTag
-from app.schemas.document import DocumentDetail, DocumentListItem, ThreadSibling
+from app.schemas.document import AttachmentSummary, DocumentDetail, DocumentListItem, ThreadSibling
 from app.schemas.tag import TagRead
 
 router = APIRouter(prefix="/cases/{case_id}/documents", tags=["documents"])
@@ -33,15 +33,18 @@ def _list_item(document: Document) -> DocumentListItem:
         {
             **{c.name: getattr(document, c.name) for c in Document.__table__.columns},
             "tags": _tags_of(document),
+            "has_native_file": bool(document.native_file_path),
         }
     )
 
 
-def _detail(document: Document) -> DocumentDetail:
+def _detail(document: Document, attachment_count: int = 0) -> DocumentDetail:
     return DocumentDetail.model_validate(
         {
             **{c.name: getattr(document, c.name) for c in Document.__table__.columns},
             "tags": _tags_of(document),
+            "has_native_file": bool(document.native_file_path),
+            "attachment_count": attachment_count,
         }
     )
 
@@ -117,7 +120,13 @@ async def get_document(
     document = result.scalars().unique().one_or_none()
     if document is None:
         raise HTTPException(status_code=404, detail="Document not found")
-    return _detail(document)
+    count_result = await db.execute(
+        select(func.count())
+        .select_from(Document)
+        .where(Document.parent_document_id == document_id)
+    )
+    attachment_count = count_result.scalar_one()
+    return _detail(document, attachment_count)
 
 
 @router.get("/{document_id}/pdf")
@@ -133,6 +142,52 @@ async def get_document_pdf(
     if not document.rendered_pdf_path:
         raise HTTPException(status_code=404, detail="Document has not been rendered yet")
     return FileResponse(document.rendered_pdf_path, media_type="application/pdf")
+
+
+@router.get("/{document_id}/native")
+async def get_document_native_file(
+    case_id: uuid.UUID,
+    document_id: uuid.UUID,
+    _membership: CaseMembership = Depends(require_case_member),
+    db: AsyncSession = Depends(get_db),
+):
+    document = await db.get(Document, document_id)
+    if document is None or document.case_id != case_id:
+        raise HTTPException(status_code=404, detail="Document not found")
+    if not document.native_file_path:
+        raise HTTPException(status_code=404, detail="No native file for this document")
+    return FileResponse(
+        document.native_file_path,
+        media_type=document.mime_type or "application/octet-stream",
+        filename=document.subject or "attachment",
+    )
+
+
+@router.get("/{document_id}/attachments", response_model=list[AttachmentSummary])
+async def list_document_attachments(
+    case_id: uuid.UUID,
+    document_id: uuid.UUID,
+    _membership: CaseMembership = Depends(require_case_member),
+    db: AsyncSession = Depends(get_db),
+):
+    document = await db.get(Document, document_id)
+    if document is None or document.case_id != case_id:
+        raise HTTPException(status_code=404, detail="Document not found")
+    result = await db.execute(
+        select(Document)
+        .where(Document.parent_document_id == document_id, Document.case_id == case_id)
+        .order_by(Document.subject)
+    )
+    children = result.scalars().all()
+    return [
+        AttachmentSummary.model_validate(
+            {
+                **{c.name: getattr(child, c.name) for c in Document.__table__.columns},
+                "has_native_file": bool(child.native_file_path),
+            }
+        )
+        for child in children
+    ]
 
 
 @threads_router.get("/{thread_id}/documents", response_model=list[ThreadSibling])
