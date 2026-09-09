@@ -128,6 +128,7 @@ class _FakeAsyncClient:
         self._userinfo_payload = userinfo_payload
         self._token_status = token_status
         self._userinfo_status = userinfo_status
+        self.userinfo_headers = None
 
     async def __aenter__(self):
         return self
@@ -139,6 +140,7 @@ class _FakeAsyncClient:
         return _FakeResponse(self._token_status, self._token_payload)
 
     async def get(self, url, headers=None):
+        self.userinfo_headers = headers
         return _FakeResponse(self._userinfo_status, self._userinfo_payload)
 
 
@@ -155,13 +157,14 @@ async def test_oidc_callback_creates_and_logs_in_a_new_user(
         }
 
     monkeypatch.setattr(oidc_module, "_discover", fake_discover)
+    fake_client = _FakeAsyncClient(
+        token_payload={"access_token": "fake-access-token"},
+        userinfo_payload={"email": "newuser@example.com", "name": "New User"},
+    )
     monkeypatch.setattr(
         oidc_module.httpx,
         "AsyncClient",
-        lambda **kw: _FakeAsyncClient(
-            token_payload={"access_token": "fake-access-token"},
-            userinfo_payload={"email": "newuser@example.com", "name": "New User"},
-        ),
+        lambda **kw: fake_client,
     )
 
     login_resp = await client.get("/api/auth/oidc/login", follow_redirects=False)
@@ -173,6 +176,10 @@ async def test_oidc_callback_creates_and_logs_in_a_new_user(
     assert callback_resp.status_code == 307
     assert callback_resp.headers["location"].endswith("/cases")
     assert "pstreview_auth" in callback_resp.cookies
+    assert fake_client.userinfo_headers is not None
+    auth_header = fake_client.userinfo_headers["Authorization"]
+    assert auth_header.startswith("Bearer ")
+    assert auth_header.endswith("fake-access-token")
 
     result = await db_session.execute(select(User).where(User.email == "newuser@example.com"))
     user = result.scalar_one()

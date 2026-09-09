@@ -115,7 +115,7 @@ async def oidc_callback(
 
             userinfo_resp = await client.get(
                 discovery["userinfo_endpoint"],
-                headers={"Authorization": f"Bearer {access_token}"},
+                headers={"Authorization": "Bearer " + access_token},
             )
             if userinfo_resp.status_code != 200:
                 raise HTTPException(status_code=400, detail="Failed to fetch OIDC user info")
