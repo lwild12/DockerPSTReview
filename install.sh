@@ -99,6 +99,27 @@ set_env_var() {
   fi
 }
 
+detect_cpu_cores() {
+  nproc 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null || echo 2
+}
+
+# ask_number PROMPT DEFAULT -- prints DEFAULT unchanged when there's no
+# real terminal to read from (e.g. unattended provisioning), the prompt
+# times out unanswered, or the answer isn't a positive integer. Reads from
+# /dev/tty rather than stdin so this still works under
+# `curl ... | sudo bash`, where stdin is the piped script itself.
+ask_number() {
+  local prompt="$1" default="$2" answer=""
+  if [ -r /dev/tty ]; then
+    read -r -t 60 -p "$prompt [${default}]: " answer </dev/tty 2>/dev/null || answer=""
+  fi
+  if [[ "$answer" =~ ^[0-9]+$ ]] && [ "$answer" -ge 1 ]; then
+    echo "$answer"
+  else
+    echo "$default"
+  fi
+}
+
 SERVER_IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
 if [ -z "$SERVER_IP" ]; then
   SERVER_IP="$(ip route get 1.1.1.1 2>/dev/null | awk '{print $7; exit}')"
@@ -127,6 +148,17 @@ else
   set_env_var POSTGRES_PASSWORD "${POSTGRES_PASSWORD_VALUE}"
   set_env_var FRONTEND_PORT "${FRONTEND_PORT}"
   set_env_var BACKEND_CORS_ORIGINS "$(origin_for localhost),${APP_URL}"
+
+  CPU_CORES="$(detect_cpu_cores)"
+  RENDER_DEFAULT=$(( CPU_CORES < 4 ? CPU_CORES : 4 ))
+  [ "$RENDER_DEFAULT" -lt 1 ] && RENDER_DEFAULT=1
+  PARSE_DEFAULT=$(( CPU_CORES * 2 < 8 ? CPU_CORES * 2 : 8 ))
+  [ "$PARSE_DEFAULT" -lt 1 ] && PARSE_DEFAULT=1
+  echo
+  log "PST imports process multiple documents in parallel (detected ${CPU_CORES} CPU core(s) on this machine). Press Enter to accept the suggested defaults, or adjust later in .env."
+  set_env_var RENDER_CONCURRENCY "$(ask_number "  Documents to render (PDF/OCR) at once per import" "$RENDER_DEFAULT")"
+  set_env_var PARSE_CONCURRENCY "$(ask_number "  Documents to parse at once per import" "$PARSE_DEFAULT")"
+
   chmod 600 .env
   log "Wrote $REPO_DIR/.env -- back this up, it's the only copy of your generated secrets."
 fi
