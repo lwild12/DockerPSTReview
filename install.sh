@@ -230,7 +230,10 @@ UP_LOG="$(mktemp)"
 trap 'rm -f "$UP_LOG"' EXIT
 
 try_up() {
-  docker compose up -d --build >"$UP_LOG" 2>&1
+  # Stream to the terminal live (a first build can run for several
+  # minutes -- silent output here is indistinguishable from a hang) while
+  # still capturing it to UP_LOG for the port-conflict pattern match below.
+  docker compose up -d --build 2>&1 | tee "$UP_LOG"
 }
 
 is_port_alloc_failure() {
@@ -252,7 +255,6 @@ settle_frontend() {
 
 log "Building and starting the stack (this can take several minutes on first run)..."
 if ! try_up; then
-  cat "$UP_LOG"
   if is_port_alloc_failure; then
     warn "Port ${FRONTEND_PORT} was reported as already allocated. This is often Docker's port allocator getting out of sync rather than a real conflict -- retrying."
     STARTED=0
@@ -268,7 +270,6 @@ if ! try_up; then
         STARTED=1
         break
       fi
-      cat "$UP_LOG"
     done
     if [ "$STARTED" -ne 1 ] && command -v systemctl >/dev/null 2>&1; then
       warn "Still failing -- restarting the Docker daemon to clear its port allocator state, then trying once more..."
@@ -281,8 +282,6 @@ if ! try_up; then
       if try_up; then
         log "Stack started successfully on port ${FRONTEND_PORT} after a Docker daemon restart."
         STARTED=1
-      else
-        cat "$UP_LOG"
       fi
     fi
     if [ "$STARTED" -ne 1 ]; then
