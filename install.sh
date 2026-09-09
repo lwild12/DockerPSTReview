@@ -103,6 +103,34 @@ detect_cpu_cores() {
   nproc 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null || echo 2
 }
 
+detect_ram_mb() {
+  if command -v free >/dev/null 2>&1; then
+    free -m | awk '/^Mem:/{print $2}'
+  elif [ -r /proc/meminfo ]; then
+    awk '/^MemTotal:/{print int($2/1024)}' /proc/meminfo
+  else
+    echo 2048
+  fi
+}
+
+# suggest_concurrency CPU_CORES RAM_MB CPU_CAP MB_PER_WORKER -- prints a
+# suggested concurrency: bounded by CPU_CAP (never suggest more workers
+# than makes sense for a single import job), and separately bounded by
+# how many MB_PER_WORKER-sized workers fit in RAM after reserving 1GB for
+# Postgres/Redis/the backend and frontend containers themselves. Whichever
+# constraint is tighter wins, so a low-RAM box doesn't get a suggestion
+# that risks OOM-killing the worker mid-import.
+suggest_concurrency() {
+  local cpu_cores="$1" ram_mb="$2" cpu_cap="$3" mb_per_worker="$4"
+  local cpu_based=$(( cpu_cores < cpu_cap ? cpu_cores : cpu_cap ))
+  local available_mb=$(( ram_mb - 1024 ))
+  [ "$available_mb" -lt 512 ] && available_mb=512
+  local ram_based=$(( available_mb / mb_per_worker ))
+  local suggested=$(( cpu_based < ram_based ? cpu_based : ram_based ))
+  [ "$suggested" -lt 1 ] && suggested=1
+  echo "$suggested"
+}
+
 # ask_number PROMPT DEFAULT -- prints DEFAULT unchanged when there's no
 # real terminal to read from (e.g. unattended provisioning), the prompt
 # times out unanswered, or the answer isn't a positive integer. Reads from
@@ -150,12 +178,11 @@ else
   set_env_var BACKEND_CORS_ORIGINS "$(origin_for localhost),${APP_URL}"
 
   CPU_CORES="$(detect_cpu_cores)"
-  RENDER_DEFAULT=$(( CPU_CORES < 4 ? CPU_CORES : 4 ))
-  [ "$RENDER_DEFAULT" -lt 1 ] && RENDER_DEFAULT=1
-  PARSE_DEFAULT=$(( CPU_CORES * 2 < 8 ? CPU_CORES * 2 : 8 ))
-  [ "$PARSE_DEFAULT" -lt 1 ] && PARSE_DEFAULT=1
+  RAM_MB="$(detect_ram_mb)"
+  RENDER_DEFAULT="$(suggest_concurrency "$CPU_CORES" "$RAM_MB" 4 400)"
+  PARSE_DEFAULT="$(suggest_concurrency "$CPU_CORES" "$RAM_MB" 8 150)"
   echo
-  log "PST imports process multiple documents in parallel (detected ${CPU_CORES} CPU core(s) on this machine). Press Enter to accept the suggested defaults, or adjust later in .env."
+  log "PST imports process multiple documents in parallel (detected ${CPU_CORES} CPU core(s), ${RAM_MB}MB RAM on this machine). Press Enter to accept the suggested defaults, or adjust later in .env."
   set_env_var RENDER_CONCURRENCY "$(ask_number "  Documents to render (PDF/OCR) at once per import" "$RENDER_DEFAULT")"
   set_env_var PARSE_CONCURRENCY "$(ask_number "  Documents to parse at once per import" "$PARSE_DEFAULT")"
 
