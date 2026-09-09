@@ -1,5 +1,4 @@
 import {
-  Anchor,
   Badge,
   Button,
   Card,
@@ -211,30 +210,13 @@ export function CaseDetailPage() {
 
   return (
     <Container size="md" py="xl">
-      <Anchor component={Link} to="/cases" size="sm">
-        ← Back to cases
-      </Anchor>
-      <Group justify="space-between" mt="sm" mb="xs">
+      <Group justify="space-between" mb="xs">
         <Title order={2}>{caseData?.name}</Title>
         <Group>
           {caseData?.my_role && <Badge>{caseData.my_role}</Badge>}
-          <Button component={Link} to={`/cases/${caseId}/documents`} size="xs" variant="subtle">
-            All documents
-          </Button>
           <Button size="xs" variant="subtle" onClick={openMemberModal}>
             Members
           </Button>
-          <Button component={Link} to={`/cases/${caseId}/coding-fields`} size="xs" variant="subtle">
-            Coding fields
-          </Button>
-          <Button component={Link} to={`/cases/${caseId}/redaction-log`} size="xs" variant="subtle">
-            Redaction log
-          </Button>
-          {isAdmin && (
-            <Button component={Link} to={`/cases/${caseId}/audit-log`} size="xs" variant="subtle">
-              Audit log
-            </Button>
-          )}
         </Group>
       </Group>
       <Text c="dimmed" mb="xl">

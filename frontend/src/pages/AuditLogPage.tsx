@@ -1,8 +1,10 @@
-import { Anchor, Code, Container, Table, Text, Title } from "@mantine/core";
+import { Code, Container, Table, Text, Title } from "@mantine/core";
+import { IconHistory } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
-import { Link, useParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
 
 import { listAuditLogs } from "../api/auditLogs";
+import { EmptyState } from "../components/EmptyState";
 
 export function AuditLogPage() {
   const { caseId = "" } = useParams<{ caseId: string }>();
@@ -16,14 +18,12 @@ export function AuditLogPage() {
 
   return (
     <Container size="lg" py="xl">
-      <Anchor component={Link} to={`/cases/${caseId}`} size="sm">
-        ← Back to case
-      </Anchor>
-      <Title order={2} mt="sm" mb="lg">
+      <Title order={2} mb="lg">
         Audit log
       </Title>
 
-      <Table striped highlightOnHover>
+      {logs && logs.length > 0 && (
+        <Table striped highlightOnHover>
         <Table.Thead>
           <Table.Tr>
             <Table.Th>Time</Table.Th>
@@ -66,10 +66,13 @@ export function AuditLogPage() {
           ))}
         </Table.Tbody>
       </Table>
+      )}
       {logs?.length === 0 && (
-        <Text c="dimmed" mt="md">
-          No audit events yet.
-        </Text>
+        <EmptyState
+          icon={IconHistory}
+          title="No audit events yet"
+          description="Actions taken in this case (tagging, redacting, imports, exports) will appear here."
+        />
       )}
     </Container>
   );

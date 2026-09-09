@@ -1,5 +1,4 @@
 import {
-  Anchor,
   Button,
   Container,
   FileInput,
@@ -9,12 +8,14 @@ import {
   Text,
   Title,
 } from "@mantine/core";
+import { IconUpload } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
-import { Link, useParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
 
-import { createImportJob, listImportJobs, TERMINAL_STATUSES } from "../api/importJobs";
 import { listCustodians } from "../api/cases";
+import { createImportJob, listImportJobs, TERMINAL_STATUSES } from "../api/importJobs";
+import { EmptyState } from "../components/EmptyState";
 import { ImportProgressBar } from "../components/ImportProgressBar";
 
 export function ImportPage() {
@@ -61,10 +62,7 @@ export function ImportPage() {
 
   return (
     <Container size="md" py="xl">
-      <Anchor component={Link} to={`/cases/${caseId}`} size="sm">
-        ← Back to case
-      </Anchor>
-      <Title order={2} mt="sm" mb="lg">
+      <Title order={2} mb="lg">
         Import PST
       </Title>
 
@@ -100,7 +98,13 @@ export function ImportPage() {
       </Title>
       <Stack>
         {jobs?.map((job) => <ImportProgressBar key={job.id} job={job} />)}
-        {jobs?.length === 0 && <Text c="dimmed">No imports yet.</Text>}
+        {jobs?.length === 0 && (
+          <EmptyState
+            icon={IconUpload}
+            title="No imports yet"
+            description="Select a custodian and upload a .pst file above to start an import."
+          />
+        )}
       </Stack>
     </Container>
   );

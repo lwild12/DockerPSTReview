@@ -1,8 +1,9 @@
 import {
-  Anchor,
   Button,
+  Center,
   Container,
   Group,
+  Loader,
   Modal,
   Select,
   Stack,
@@ -11,14 +12,16 @@ import {
   Title,
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
+import { IconMailOff } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
 
 import { listDocuments, type DedupStatus, type DocType } from "../api/documents";
 import { addDocumentsToReviewSet, createReviewSet, listReviewSets } from "../api/reviewSets";
 import { applyTagBulk, listTags } from "../api/tags";
 import { DocumentTable } from "../components/DocumentTable";
+import { EmptyState } from "../components/EmptyState";
 
 export function DocumentListPage() {
   const { caseId = "" } = useParams<{ caseId: string }>();
@@ -108,15 +111,9 @@ export function DocumentListPage() {
 
   return (
     <Container size="xl" py="xl">
-      <Anchor component={Link} to={`/cases/${caseId}`} size="sm">
-        ← Back to case
-      </Anchor>
-      <Group justify="space-between" mt="sm" mb="lg">
-        <Title order={2}>Documents</Title>
-        <Anchor component={Link} to={`/cases/${caseId}/review-sets`} size="sm">
-          View review sets →
-        </Anchor>
-      </Group>
+      <Title order={2} mb="lg">
+        Documents
+      </Title>
 
       <Group mb="md">
         <Select
@@ -160,8 +157,12 @@ export function DocumentListPage() {
         )}
       </Group>
 
-      {isLoading && <Text>Loading...</Text>}
-      {documents && (
+      {isLoading && (
+        <Center py={60}>
+          <Loader />
+        </Center>
+      )}
+      {documents && documents.length > 0 && (
         <DocumentTable
           documents={documents}
           selectedIds={selectedIds}
@@ -170,7 +171,13 @@ export function DocumentListPage() {
           onToggleFamily={toggleFamily}
         />
       )}
-      {documents?.length === 0 && <Text c="dimmed">No documents match these filters.</Text>}
+      {documents?.length === 0 && (
+        <EmptyState
+          icon={IconMailOff}
+          title="No documents match these filters"
+          description="Try clearing the type, status, or search filters above."
+        />
+      )}
 
       <Modal opened={modalOpened} onClose={closeModal} title="Add to review set">
         <Stack>

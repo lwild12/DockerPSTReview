@@ -1,8 +1,21 @@
-import { Anchor, Badge, Button, Container, Table, Text, Title } from "@mantine/core";
+import {
+  Anchor,
+  Badge,
+  Button,
+  Center,
+  Container,
+  Group,
+  Loader,
+  Table,
+  Text,
+  Title,
+} from "@mantine/core";
+import { IconEyeOff } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 
 import { listCaseRedactionLog, redactionLogCsvUrl } from "../api/redactionLog";
+import { EmptyState } from "../components/EmptyState";
 
 export function RedactionLogPage() {
   const { caseId = "" } = useParams<{ caseId: string }>();
@@ -16,13 +29,8 @@ export function RedactionLogPage() {
 
   return (
     <Container size="lg" py="xl">
-      <Anchor component={Link} to={`/cases/${caseId}`} size="sm">
-        ← Back to case
-      </Anchor>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <Title order={2} mt="sm" mb="lg">
-          Redaction log
-        </Title>
+      <Group justify="space-between" mb="lg">
+        <Title order={2}>Redaction log</Title>
         <Button
           component="a"
           href={redactionLogCsvUrl(caseId)}
@@ -32,13 +40,17 @@ export function RedactionLogPage() {
         >
           Export CSV
         </Button>
-      </div>
+      </Group>
       <Text c="dimmed" size="sm" mb="lg">
         Every redaction currently applied across this case's documents, for QC review and
         privilege-log style reporting.
       </Text>
 
-      {isLoading && <Text>Loading...</Text>}
+      {isLoading && (
+        <Center py={60}>
+          <Loader />
+        </Center>
+      )}
       {entries && entries.length > 0 && (
         <Table striped highlightOnHover>
           <Table.Thead>
@@ -73,7 +85,13 @@ export function RedactionLogPage() {
           </Table.Tbody>
         </Table>
       )}
-      {entries?.length === 0 && <Text c="dimmed">No redactions applied in this case yet.</Text>}
+      {entries?.length === 0 && (
+        <EmptyState
+          icon={IconEyeOff}
+          title="No redactions applied in this case yet"
+          description="Redactions you apply while reviewing documents will show up here for QC."
+        />
+      )}
     </Container>
   );
 }
