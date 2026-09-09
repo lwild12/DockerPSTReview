@@ -68,10 +68,21 @@ if [ -n "$SCRIPT_DIR" ] && [ -f "$SCRIPT_DIR/docker-compose.yml" ] && [ -d "$SCR
 else
   if [ -d "$INSTALL_DIR/.git" ]; then
     log "Repo already present at $INSTALL_DIR -- pulling latest..."
-    git -C "$INSTALL_DIR" pull --ff-only
+    git -C "$INSTALL_DIR" fetch origin main
+    # The repo's GitHub-reported default branch has at times pointed at a
+    # feature branch instead of main, which a plain clone/checkout with no
+    # explicit branch would have followed -- pin to main explicitly so an
+    # affected checkout self-heals here instead of quietly tracking the
+    # wrong branch on every re-run.
+    CURRENT_BRANCH="$(git -C "$INSTALL_DIR" symbolic-ref --short -q HEAD || echo "")"
+    if [ "$CURRENT_BRANCH" != "main" ]; then
+      warn "This checkout is on branch '${CURRENT_BRANCH:-<detached HEAD>}', not 'main' -- switching to main."
+      git -C "$INSTALL_DIR" checkout main 2>/dev/null || git -C "$INSTALL_DIR" checkout -B main origin/main
+    fi
+    git -C "$INSTALL_DIR" pull --ff-only origin main
   else
     log "Cloning $REPO_URL into $INSTALL_DIR..."
-    git clone "$REPO_URL" "$INSTALL_DIR"
+    git clone --branch main "$REPO_URL" "$INSTALL_DIR"
   fi
   REPO_DIR="$INSTALL_DIR"
 fi

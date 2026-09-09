@@ -48,8 +48,20 @@ if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
 fi
 
 log "Fetching latest code..."
-git fetch origin
-git pull --ff-only
+git fetch origin main
+
+# The repo's GitHub-reported default branch has at times pointed at a
+# feature branch instead of main, which a plain `git clone`/checkout with
+# no explicit branch would have followed -- pin to main explicitly so an
+# affected checkout self-heals here instead of quietly tracking the wrong
+# branch on every update.
+CURRENT_BRANCH="$(git symbolic-ref --short -q HEAD || echo "")"
+if [ "$CURRENT_BRANCH" != "main" ]; then
+  warn "This checkout is on branch '${CURRENT_BRANCH:-<detached HEAD>}', not 'main' -- switching to main."
+  git checkout main 2>/dev/null || git checkout -B main origin/main
+fi
+
+git pull --ff-only origin main
 
 set_env_var() {
   # set_env_var KEY VALUE -- updates KEY in .env in place, or appends it
