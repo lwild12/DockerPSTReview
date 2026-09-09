@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.dependencies import require_case_member, require_case_reviewer_or_admin
 from app.auth.users import current_active_user
 from app.db import get_db
+from app.models.base import orm_columns
 from app.models.case import CaseMembership
 from app.models.document import Document
 from app.models.redaction import Redaction
@@ -173,7 +174,7 @@ async def _fetch_case_redaction_log(
     return [
         RedactionLogEntry.model_validate(
             {
-                **{c.name: getattr(redaction, c.name) for c in Redaction.__table__.columns},
+                **orm_columns(redaction),
                 "document_subject": subject,
                 "document_sender": sender,
                 "created_by_email": email,

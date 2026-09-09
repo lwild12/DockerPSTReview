@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -8,6 +8,7 @@ from sqlalchemy.orm import selectinload
 
 from app.auth.dependencies import require_case_member
 from app.db import get_db
+from app.models.base import orm_columns
 from app.models.case import CaseMembership
 from app.models.document import DedupStatus, DocType, Document, Thread
 from app.models.tag import DocumentTag
@@ -31,7 +32,7 @@ def _tags_of(document: Document) -> list[TagRead]:
 def _list_item(document: Document) -> DocumentListItem:
     return DocumentListItem.model_validate(
         {
-            **{c.name: getattr(document, c.name) for c in Document.__table__.columns},
+            **orm_columns(document),
             "tags": _tags_of(document),
             "has_native_file": bool(document.native_file_path),
         }
@@ -41,7 +42,7 @@ def _list_item(document: Document) -> DocumentListItem:
 def _detail(document: Document, attachment_count: int = 0) -> DocumentDetail:
     return DocumentDetail.model_validate(
         {
-            **{c.name: getattr(document, c.name) for c in Document.__table__.columns},
+            **orm_columns(document),
             "tags": _tags_of(document),
             "has_native_file": bool(document.native_file_path),
             "attachment_count": attachment_count,
@@ -60,8 +61,8 @@ async def list_documents(
     is_inclusive_email: bool | None = None,
     near_duplicate_cluster_id: uuid.UUID | None = None,
     q: str | None = None,
-    page: int = 1,
-    page_size: int = 50,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=500),
     _membership: CaseMembership = Depends(require_case_member),
     db: AsyncSession = Depends(get_db),
 ):
@@ -127,9 +128,7 @@ async def get_document(
     if document is None:
         raise HTTPException(status_code=404, detail="Document not found")
     count_result = await db.execute(
-        select(func.count())
-        .select_from(Document)
-        .where(Document.parent_document_id == document_id)
+        select(func.count()).select_from(Document).where(Document.parent_document_id == document_id)
     )
     attachment_count = count_result.scalar_one()
     return _detail(document, attachment_count)
@@ -188,7 +187,7 @@ async def list_document_attachments(
     return [
         AttachmentSummary.model_validate(
             {
-                **{c.name: getattr(child, c.name) for c in Document.__table__.columns},
+                **orm_columns(child),
                 "has_native_file": bool(child.native_file_path),
             }
         )

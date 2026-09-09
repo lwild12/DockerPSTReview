@@ -1,12 +1,13 @@
 import uuid
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import require_case_admin
 from app.db import get_db
 from app.models.audit import AuditLog
+from app.models.base import orm_columns
 from app.models.case import CaseMembership
 from app.models.user import User
 from app.schemas.audit import AuditLogRead
@@ -17,8 +18,8 @@ router = APIRouter(prefix="/cases/{case_id}/audit-logs", tags=["audit-logs"])
 @router.get("", response_model=list[AuditLogRead])
 async def list_audit_logs(
     case_id: uuid.UUID,
-    page: int = 1,
-    page_size: int = 50,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=500),
     _membership: CaseMembership = Depends(require_case_admin),
     db: AsyncSession = Depends(get_db),
 ):
@@ -33,7 +34,7 @@ async def list_audit_logs(
     return [
         AuditLogRead.model_validate(
             {
-                **{c.name: getattr(entry, c.name) for c in AuditLog.__table__.columns},
+                **orm_columns(entry),
                 "user_email": email,
             }
         )

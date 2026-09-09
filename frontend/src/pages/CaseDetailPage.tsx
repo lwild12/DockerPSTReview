@@ -32,7 +32,7 @@ import {
   type CaseRole,
 } from "../api/cases";
 import { createImportJob, listImportJobs, TERMINAL_STATUSES } from "../api/importJobs";
-import { listDocuments } from "../api/documents";
+import { listAllDocuments } from "../api/documents";
 import {
   addDocumentsToReviewSet,
   createReviewSet,
@@ -190,10 +190,7 @@ export function CaseDetailPage() {
         reviewSetId = created.id;
       }
       if (!reviewSetId) throw new Error("Choose or name a review set");
-      const primaryDocs = await listDocuments(caseId, {
-        dedup_status: "primary",
-        page_size: 5000,
-      });
+      const primaryDocs = await listAllDocuments(caseId, { dedup_status: "primary" });
       let toAdd = primaryDocs;
       if (excludeRedundant) {
         toAdd = toAdd.filter((d) => !(d.doc_type === "email" && !d.is_inclusive_email));

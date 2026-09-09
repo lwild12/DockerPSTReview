@@ -5,6 +5,7 @@ import { Link } from "react-router-dom";
 
 import { listNearDuplicateClusterDocuments } from "../api/analytics";
 import type { DocumentDetail } from "../api/documents";
+import { documentLink } from "../lib/links";
 
 export function NearDuplicatesPanel({
   caseId,
@@ -24,8 +25,7 @@ export function NearDuplicatesPanel({
 
   const others = (members ?? []).filter((m) => m.id !== document.id);
 
-  const linkTo = (id: string) =>
-    reviewSetId ? `/cases/${caseId}/documents/${id}?reviewSet=${reviewSetId}` : `/cases/${caseId}/documents/${id}`;
+  const linkTo = (id: string) => documentLink(caseId, id, reviewSetId);
 
   return (
     <Stack gap="xs">

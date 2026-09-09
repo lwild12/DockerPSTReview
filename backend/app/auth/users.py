@@ -1,6 +1,5 @@
 import uuid
 from collections.abc import AsyncGenerator
-from typing import Optional
 
 from fastapi import Depends, HTTPException, Request, status
 from fastapi_users import BaseUserManager, FastAPIUsers, UUIDIDMixin, schemas
@@ -29,7 +28,7 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
         self,
         user_create: schemas.UC,
         safe: bool = False,
-        request: Optional[Request] = None,
+        request: Request | None = None,
     ) -> User:
         db = self.user_db.session
         # The very first account always gets in (it becomes the admin below);
@@ -45,7 +44,7 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
                 )
         return await super().create(user_create, safe=safe, request=request)
 
-    async def on_after_register(self, user: User, request: Optional[Request] = None) -> None:
+    async def on_after_register(self, user: User, request: Request | None = None) -> None:
         db = self.user_db.session
         count = await db.scalar(select(func.count()).select_from(User))
         if count == 1:

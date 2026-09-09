@@ -10,7 +10,7 @@ from app.db import Base
 from app.models.base import TimestampMixin, UUIDPKMixin
 
 
-class ReviewStatus(str, enum.Enum):
+class ReviewStatus(enum.StrEnum):
     unreviewed = "unreviewed"
     in_review = "in_review"
     reviewed = "reviewed"

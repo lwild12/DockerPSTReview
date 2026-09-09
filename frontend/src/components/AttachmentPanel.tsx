@@ -9,6 +9,7 @@ import {
   listDocumentAttachments,
   type DocumentDetail,
 } from "../api/documents";
+import { documentLink } from "../lib/links";
 
 function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -40,8 +41,7 @@ export function AttachmentPanel({
     queryFn: () => listDocumentAttachments(caseId, familyRootId),
   });
 
-  const linkTo = (id: string) =>
-    reviewSetId ? `/cases/${caseId}/documents/${id}?reviewSet=${reviewSetId}` : `/cases/${caseId}/documents/${id}`;
+  const linkTo = (id: string) => documentLink(caseId, id, reviewSetId);
 
   return (
     <Stack gap="xs">

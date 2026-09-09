@@ -20,19 +20,19 @@ from app.db import Base
 from app.models.base import TimestampMixin, UUIDPKMixin
 
 
-class DocType(str, enum.Enum):
+class DocType(enum.StrEnum):
     email = "email"
     attachment = "attachment"
     calendar = "calendar"
     contact = "contact"
 
 
-class DedupStatus(str, enum.Enum):
+class DedupStatus(enum.StrEnum):
     primary = "primary"
     duplicate = "duplicate"
 
 
-class OcrStatus(str, enum.Enum):
+class OcrStatus(enum.StrEnum):
     not_applicable = "not_applicable"
     completed = "completed"
     failed = "failed"

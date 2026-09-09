@@ -143,7 +143,19 @@ async def render_documents_for_job(import_job_id: uuid.UUID, db: AsyncSession) -
         async with semaphore, session_maker() as session:
             await render_document(document_id, session)
 
-    await asyncio.gather(*(_render_one(document_id) for document_id in document_ids))
+    # return_exceptions=True: render_document already catches its own expected
+    # failure modes (bad file, unsupported format, OCR failure) and records
+    # them on the document row -- an exception escaping here means something
+    # unexpected (e.g. a DB error), and one such failure shouldn't lose the
+    # results of every other document rendering concurrently in this batch.
+    results = await asyncio.gather(
+        *(_render_one(document_id) for document_id in document_ids), return_exceptions=True
+    )
+    for document_id, outcome in zip(document_ids, results, strict=True):
+        if isinstance(outcome, BaseException):
+            logger.warning(
+                "Unexpected failure rendering document %s", document_id, exc_info=outcome
+            )
 
 
 async def _render_document_standalone(document_id: uuid.UUID) -> None:

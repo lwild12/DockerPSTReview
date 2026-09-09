@@ -1,4 +1,4 @@
-const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "/api";
+import { apiFetch } from "./client";
 
 export type ImportStatus =
   | "pending"
@@ -55,30 +55,12 @@ export interface FailedDocumentSummary {
   ocr_error: string;
 }
 
-async function handle<T>(res: Response): Promise<T> {
-  if (!res.ok) {
-    let detail = res.statusText;
-    try {
-      const body = await res.json();
-      detail = body.detail ?? detail;
-    } catch {
-      // ignore non-JSON error bodies
-    }
-    throw new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
-  }
-  return (await res.json()) as T;
-}
-
 export async function listImportJobs(caseId: string): Promise<ImportJob[]> {
-  const res = await fetch(`${API_BASE}/cases/${caseId}/import-jobs`, { credentials: "include" });
-  return handle<ImportJob[]>(res);
+  return apiFetch<ImportJob[]>(`/cases/${caseId}/import-jobs`);
 }
 
 export async function getImportJob(caseId: string, jobId: string): Promise<ImportJob> {
-  const res = await fetch(`${API_BASE}/cases/${caseId}/import-jobs/${jobId}`, {
-    credentials: "include",
-  });
-  return handle<ImportJob>(res);
+  return apiFetch<ImportJob>(`/cases/${caseId}/import-jobs/${jobId}`);
 }
 
 export async function createImportJob(
@@ -89,22 +71,17 @@ export async function createImportJob(
   const formData = new FormData();
   formData.append("custodian_id", custodianId);
   formData.append("file", file);
-  const res = await fetch(`${API_BASE}/cases/${caseId}/import-jobs`, {
+  return apiFetch<ImportJob>(`/cases/${caseId}/import-jobs`, {
     method: "POST",
-    credentials: "include",
     body: formData,
   });
-  return handle<ImportJob>(res);
 }
 
 export async function listFailedDocuments(
   caseId: string,
   jobId: string,
 ): Promise<FailedDocumentSummary[]> {
-  const res = await fetch(`${API_BASE}/cases/${caseId}/import-jobs/${jobId}/failed-documents`, {
-    credentials: "include",
-  });
-  return handle<FailedDocumentSummary[]>(res);
+  return apiFetch<FailedDocumentSummary[]>(`/cases/${caseId}/import-jobs/${jobId}/failed-documents`);
 }
 
 export const TERMINAL_STATUSES: ImportStatus[] = ["completed", "completed_with_errors", "failed"];

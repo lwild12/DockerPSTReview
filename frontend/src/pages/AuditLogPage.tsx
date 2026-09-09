@@ -1,4 +1,4 @@
-import { Code, Container, Table, Text, Title } from "@mantine/core";
+import { Center, Code, Container, Loader, Table, Text, Title } from "@mantine/core";
 import { IconHistory } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { useParams } from "react-router-dom";
@@ -10,7 +10,7 @@ export function AuditLogPage() {
   const { caseId = "" } = useParams<{ caseId: string }>();
   const enabled = caseId !== "";
 
-  const { data: logs } = useQuery({
+  const { data: logs, isLoading } = useQuery({
     queryKey: ["audit-logs", caseId],
     queryFn: () => listAuditLogs(caseId),
     enabled,
@@ -22,6 +22,11 @@ export function AuditLogPage() {
         Audit log
       </Title>
 
+      {isLoading && (
+        <Center py={60}>
+          <Loader />
+        </Center>
+      )}
       {logs && logs.length > 0 && (
         <Table striped highlightOnHover>
         <Table.Thead>

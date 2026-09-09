@@ -1,4 +1,4 @@
-import { apiFetch } from "./client";
+import { API_BASE, apiFetch } from "./client";
 import type { TagRead } from "./tags";
 
 export type DocType = "email" | "attachment" | "calendar" | "contact";
@@ -89,18 +89,35 @@ export async function listDocuments(
   return apiFetch<DocumentListItem[]>(`/cases/${caseId}/documents${query ? `?${query}` : ""}`);
 }
 
+const MAX_PAGE_SIZE = 500;
+
+// Pages through every document matching the filters (the backend caps
+// page_size at 500), instead of relying on one oversized request -- a case
+// with more documents than a single page's limit would otherwise be
+// silently truncated.
+export async function listAllDocuments(
+  caseId: string,
+  filters: Omit<DocumentFilters, "page" | "page_size"> = {},
+): Promise<DocumentListItem[]> {
+  const all: DocumentListItem[] = [];
+  for (let page = 1; ; page++) {
+    const batch = await listDocuments(caseId, { ...filters, page, page_size: MAX_PAGE_SIZE });
+    all.push(...batch);
+    if (batch.length < MAX_PAGE_SIZE) break;
+  }
+  return all;
+}
+
 export async function getDocument(caseId: string, documentId: string): Promise<DocumentDetail> {
   return apiFetch<DocumentDetail>(`/cases/${caseId}/documents/${documentId}`);
 }
 
 export function documentPdfUrl(caseId: string, documentId: string): string {
-  const base = import.meta.env.VITE_API_BASE_URL ?? "/api";
-  return `${base}/cases/${caseId}/documents/${documentId}/pdf`;
+  return `${API_BASE}/cases/${caseId}/documents/${documentId}/pdf`;
 }
 
 export function documentNativeFileUrl(caseId: string, documentId: string): string {
-  const base = import.meta.env.VITE_API_BASE_URL ?? "/api";
-  return `${base}/cases/${caseId}/documents/${documentId}/native`;
+  return `${API_BASE}/cases/${caseId}/documents/${documentId}/native`;
 }
 
 export async function listDocumentAttachments(

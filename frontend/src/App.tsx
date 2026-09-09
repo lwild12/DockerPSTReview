@@ -35,22 +35,10 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
 }
 
 function RequireSuperuser({ children }: { children: React.ReactNode }) {
-  const { user, loading } = useAuth();
-
-  if (loading) {
-    return (
-      <Center mih="100vh">
-        <Loader />
-      </Center>
-    );
-  }
-  if (!user) {
-    return <Navigate to="/login" replace />;
-  }
-  if (!user.is_superuser) {
-    return <Navigate to="/cases" replace />;
-  }
-  return <>{children}</>;
+  const { user } = useAuth();
+  return (
+    <RequireAuth>{user?.is_superuser ? children : <Navigate to="/cases" replace />}</RequireAuth>
+  );
 }
 
 export function App() {
