@@ -245,6 +245,7 @@ async def run_import_job(import_job_id: uuid.UUID, db: AsyncSession) -> None:
 
     all_documents: list[Document] = []
     parse_errors = 0
+    parse_error_details: list[dict] = []
     for entry in result.entries:
         try:
             if entry.doc_type == "email":
@@ -253,16 +254,25 @@ async def run_import_job(import_job_id: uuid.UUID, db: AsyncSession) -> None:
                 all_documents.append(await _stage_contact_entry(entry, job))
             elif entry.doc_type == "calendar":
                 all_documents.append(await _stage_calendar_entry(entry, job))
-        except Exception:
+        except Exception as exc:
             logger.warning(
                 "Failed to stage manifest entry %s, skipping it", entry.id, exc_info=True
             )
             parse_errors += 1
+            if len(parse_error_details) < 200:
+                parse_error_details.append(
+                    {
+                        "doc_type": entry.doc_type,
+                        "folder_path": entry.folder_path,
+                        "error": str(exc)[:500],
+                    }
+                )
 
     db.add_all(all_documents)
     await db.flush()
 
     stats["parse_errors"] = parse_errors
+    stats["parse_error_details"] = parse_error_details
     stats["emails"] = sum(1 for d in all_documents if d.doc_type == DocType.email)
     stats["attachments"] = sum(1 for d in all_documents if d.doc_type == DocType.attachment)
     stats["contacts"] = sum(1 for d in all_documents if d.doc_type == DocType.contact)

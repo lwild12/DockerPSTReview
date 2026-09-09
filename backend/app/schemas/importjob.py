@@ -3,6 +3,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict
 
+from app.models.document import DocType, OcrStatus
 from app.models.importjob import ImportStatus
 
 
@@ -23,3 +24,14 @@ class ImportJobRead(BaseModel):
     documents_total: int = 0
     documents_rendered: int = 0
     documents_render_failed: int = 0
+
+
+class FailedDocumentSummary(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    doc_type: DocType
+    subject: str
+    render_error: str
+    ocr_status: OcrStatus
+    ocr_error: str
