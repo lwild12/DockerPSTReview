@@ -21,7 +21,9 @@ class UserTagPreset(UUIDPKMixin, TimestampMixin, Base):
 
 class UserRedactionReasonPreset(UUIDPKMixin, TimestampMixin, Base):
     __tablename__ = "user_redaction_reason_presets"
-    __table_args__ = (UniqueConstraint("user_id", "reason", name="uq_user_redaction_reason_preset"),)
+    __table_args__ = (
+        UniqueConstraint("user_id", "reason", name="uq_user_redaction_reason_preset"),
+    )
 
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE")

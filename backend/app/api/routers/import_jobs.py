@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.dependencies import require_case_admin, require_case_member
 from app.auth.users import current_active_user
 from app.db import get_db
+from app.models.base import orm_columns
 from app.models.case import CaseMembership
 from app.models.document import DedupStatus, Document, OcrStatus
 from app.models.importjob import PSTImportJob
@@ -39,7 +40,7 @@ async def _document_progress(import_job_id: uuid.UUID, db: AsyncSession) -> tupl
 async def _to_read(job: PSTImportJob, db: AsyncSession) -> ImportJobRead:
     total, rendered, failed = await _document_progress(job.id, db)
     return ImportJobRead(
-        **{c.name: getattr(job, c.name) for c in PSTImportJob.__table__.columns},
+        **orm_columns(job),
         documents_total=total,
         documents_rendered=rendered,
         documents_render_failed=failed,

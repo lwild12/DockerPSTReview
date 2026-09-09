@@ -60,9 +60,7 @@ def _shingle_base_hash(shingle: str) -> int:
 
 def _minhash_signature(shingles: set[str], coefficients: list[tuple[int, int]]) -> tuple[int, ...]:
     base_hashes = [_shingle_base_hash(s) for s in shingles]
-    return tuple(
-        min((a * h + b) % _MERSENNE_PRIME for h in base_hashes) for a, b in coefficients
-    )
+    return tuple(min((a * h + b) % _MERSENNE_PRIME for h in base_hashes) for a, b in coefficients)
 
 
 def compute_near_duplicate_clusters(
@@ -117,7 +115,7 @@ def compute_near_duplicate_clusters(
             for j in range(i + 1, len(members)):
                 a, b = members[i], members[j]
                 sig_a, sig_b = signatures[a], signatures[b]
-                matches = sum(1 for x, y in zip(sig_a, sig_b) if x == y)
+                matches = sum(1 for x, y in zip(sig_a, sig_b, strict=True) if x == y)
                 if matches / num_hashes >= jaccard_threshold:
                     union(a, b)
                     clustered.add(a)
@@ -134,6 +132,4 @@ def compute_near_duplicate_clusters(
         for member in members:
             cluster_key_by_id[member] = root
 
-    return [
-        NearDupAssignment(id=c.id, cluster_key=cluster_key_by_id.get(c.id)) for c in candidates
-    ]
+    return [NearDupAssignment(id=c.id, cluster_key=cluster_key_by_id.get(c.id)) for c in candidates]

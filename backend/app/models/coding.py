@@ -10,7 +10,7 @@ from app.db import Base
 from app.models.base import TimestampMixin, UUIDPKMixin
 
 
-class CodingFieldType(str, enum.Enum):
+class CodingFieldType(enum.StrEnum):
     single_select = "single_select"
     multi_select = "multi_select"
 

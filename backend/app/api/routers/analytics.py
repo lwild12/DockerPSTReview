@@ -14,9 +14,7 @@ from app.schemas.document import DocumentListItem
 from app.tasks.analytics_tasks import run_case_analytics
 
 router = APIRouter(prefix="/cases/{case_id}/analytics", tags=["analytics"])
-clusters_router = APIRouter(
-    prefix="/cases/{case_id}/near-duplicate-clusters", tags=["analytics"]
-)
+clusters_router = APIRouter(prefix="/cases/{case_id}/near-duplicate-clusters", tags=["analytics"])
 
 
 async def _summary(case: Case, db: AsyncSession) -> CaseAnalyticsSummary:

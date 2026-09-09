@@ -1,4 +1,4 @@
-import { apiFetch } from "./client";
+import { API_BASE, apiFetch } from "./client";
 
 export interface RedactionLogEntry {
   id: string;
@@ -22,6 +22,5 @@ export async function listCaseRedactionLog(caseId: string): Promise<RedactionLog
 }
 
 export function redactionLogCsvUrl(caseId: string): string {
-  const base = import.meta.env.VITE_API_BASE_URL ?? "/api";
-  return `${base}/cases/${caseId}/redactions/export.csv`;
+  return `${API_BASE}/cases/${caseId}/redactions/export.csv`;
 }

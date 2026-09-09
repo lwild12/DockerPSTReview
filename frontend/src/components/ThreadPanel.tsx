@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 
 import { listThreadDocuments } from "../api/documents";
+import { documentLink } from "../lib/links";
 
 export function ThreadPanel({
   caseId,
@@ -27,11 +28,7 @@ export function ThreadPanel({
         <NavLink
           key={doc.id}
           component={Link}
-          to={
-            reviewSetId
-              ? `/cases/${caseId}/documents/${doc.id}?reviewSet=${reviewSetId}`
-              : `/cases/${caseId}/documents/${doc.id}`
-          }
+          to={documentLink(caseId, doc.id, reviewSetId)}
           active={doc.id === currentDocumentId}
           label={doc.subject || "(no subject)"}
           description={

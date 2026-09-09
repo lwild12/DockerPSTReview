@@ -10,12 +10,12 @@ from app.db import Base
 from app.models.base import TimestampMixin, UUIDPKMixin
 
 
-class ExportType(str, enum.Enum):
+class ExportType(enum.StrEnum):
     production_set = "production_set"
     combined_pdf = "combined_pdf"
 
 
-class ExportStatus(str, enum.Enum):
+class ExportStatus(enum.StrEnum):
     pending = "pending"
     running = "running"
     completed = "completed"

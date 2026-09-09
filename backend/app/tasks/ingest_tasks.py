@@ -253,73 +253,81 @@ async def run_import_job(import_job_id: uuid.UUID, db: AsyncSession) -> None:
     job.stats = stats
     await db.commit()
 
-    # Staging is per-item disk I/O (reading the staged file, writing native
-    # attachment files) and CPU work (parsing, hashing) with nothing shared
-    # between entries, so it runs concurrently in a thread pool -- same
-    # approach as rendering below.
-    parse_concurrency = max(1, settings.parse_concurrency)
-    semaphore = asyncio.Semaphore(parse_concurrency)
+    try:
+        # Staging is per-item disk I/O (reading the staged file, writing native
+        # attachment files) and CPU work (parsing, hashing) with nothing shared
+        # between entries, so it runs concurrently in a thread pool -- same
+        # approach as rendering below.
+        parse_concurrency = max(1, settings.parse_concurrency)
+        semaphore = asyncio.Semaphore(parse_concurrency)
 
-    async def _stage_one(entry: ManifestEntry) -> list[Document]:
-        async with semaphore:
-            return await asyncio.to_thread(_stage_entry, entry, job)
+        async def _stage_one(entry: ManifestEntry) -> list[Document]:
+            async with semaphore:
+                return await asyncio.to_thread(_stage_entry, entry, job)
 
-    staged = await asyncio.gather(
-        *(_stage_one(entry) for entry in result.entries), return_exceptions=True
-    )
+        staged = await asyncio.gather(
+            *(_stage_one(entry) for entry in result.entries), return_exceptions=True
+        )
 
-    all_documents: list[Document] = []
-    parse_errors = 0
-    parse_error_details: list[dict] = []
-    for entry, outcome in zip(result.entries, staged, strict=True):
-        if isinstance(outcome, BaseException):
-            logger.warning(
-                "Failed to stage manifest entry %s, skipping it", entry.id, exc_info=outcome
-            )
-            parse_errors += 1
-            if len(parse_error_details) < 200:
-                parse_error_details.append(
-                    {
-                        "doc_type": entry.doc_type,
-                        "folder_path": entry.folder_path,
-                        "error": str(outcome)[:500],
-                    }
+        all_documents: list[Document] = []
+        parse_errors = 0
+        parse_error_details: list[dict] = []
+        for entry, outcome in zip(result.entries, staged, strict=True):
+            if isinstance(outcome, BaseException):
+                logger.warning(
+                    "Failed to stage manifest entry %s, skipping it", entry.id, exc_info=outcome
                 )
-        else:
-            all_documents.extend(outcome)
+                parse_errors += 1
+                if len(parse_error_details) < 200:
+                    parse_error_details.append(
+                        {
+                            "doc_type": entry.doc_type,
+                            "folder_path": entry.folder_path,
+                            "error": str(outcome)[:500],
+                        }
+                    )
+            else:
+                all_documents.extend(outcome)
 
-    db.add_all(all_documents)
-    await db.flush()
+        db.add_all(all_documents)
+        await db.flush()
 
-    stats["parse_errors"] = parse_errors
-    stats["parse_error_details"] = parse_error_details
-    stats["emails"] = sum(1 for d in all_documents if d.doc_type == DocType.email)
-    stats["attachments"] = sum(1 for d in all_documents if d.doc_type == DocType.attachment)
-    stats["contacts"] = sum(1 for d in all_documents if d.doc_type == DocType.contact)
-    stats["calendar_items"] = sum(1 for d in all_documents if d.doc_type == DocType.calendar)
-    job.stats = stats
-    job.status = ImportStatus.dedup
-    await db.commit()
+        stats["parse_errors"] = parse_errors
+        stats["parse_error_details"] = parse_error_details
+        stats["emails"] = sum(1 for d in all_documents if d.doc_type == DocType.email)
+        stats["attachments"] = sum(1 for d in all_documents if d.doc_type == DocType.attachment)
+        stats["contacts"] = sum(1 for d in all_documents if d.doc_type == DocType.contact)
+        stats["calendar_items"] = sum(1 for d in all_documents if d.doc_type == DocType.calendar)
+        job.stats = stats
+        job.status = ImportStatus.dedup
+        await db.commit()
 
-    stats["duplicates"] = await _run_dedup(job.case_id, db)
-    job.stats = stats
-    await db.commit()
+        stats["duplicates"] = await _run_dedup(job.case_id, db)
+        job.stats = stats
+        await db.commit()
 
-    await _run_threading(job.case_id, db)
+        await _run_threading(job.case_id, db)
 
-    job.status = ImportStatus.rendering
-    await db.commit()
-    await render_documents_for_job(job.id, db)
+        job.status = ImportStatus.rendering
+        await db.commit()
+        await render_documents_for_job(job.id, db)
 
-    stats["render_failures"] = await _count_render_failures(job.id, db)
-    job.stats = stats
-    job.status = (
-        ImportStatus.completed
-        if parse_errors == 0 and stats["render_failures"] == 0
-        else ImportStatus.completed_with_errors
-    )
-    job.completed_at = datetime.now(UTC)
-    await db.commit()
+        stats["render_failures"] = await _count_render_failures(job.id, db)
+        job.stats = stats
+        job.status = (
+            ImportStatus.completed
+            if parse_errors == 0 and stats["render_failures"] == 0
+            else ImportStatus.completed_with_errors
+        )
+        job.completed_at = datetime.now(UTC)
+        await db.commit()
+    except Exception as exc:
+        logger.exception("Import job %s failed after extraction", import_job_id)
+        await db.rollback()
+        job.status = ImportStatus.failed
+        job.error_message = str(exc)[:2000]
+        await db.commit()
+        return
 
     shutil.rmtree(staging, ignore_errors=True)
 
