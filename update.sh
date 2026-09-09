@@ -94,13 +94,29 @@ suggest_concurrency() {
 }
 
 # ask_number PROMPT DEFAULT -- prints DEFAULT unchanged when there's no
-# real terminal to read from, the prompt times out unanswered, or the
-# answer isn't a positive integer. Reads from /dev/tty rather than stdin
-# so this still works under `curl ... | sudo bash`.
+# real terminal to read from (e.g. a remote command run without a pty),
+# the prompt times out unanswered, or the answer isn't a positive integer.
+# Reads from /dev/tty rather than stdin so this still works under
+# `curl ... | sudo bash`.
+#
+# /dev/tty is usually world-readable even with no controlling terminal
+# attached (`ssh host cmd` without -t, cloud-init, a CI runner), so `[ -r
+# /dev/tty ]` alone can't tell interactive and non-interactive contexts
+# apart -- this actually opens it and checks it's a real terminal instead.
+# The prompt+default is also always printed on its own line up front,
+# rather than relying on `read -p`'s inline, unterminated prompt, so a
+# still-waiting read can't look identical to a hang behind a line-buffered
+# terminal or log viewer.
 ask_number() {
   local prompt="$1" default="$2" answer=""
-  if [ -r /dev/tty ]; then
-    read -r -t 60 -p "$prompt [${default}]: " answer </dev/tty 2>/dev/null || answer=""
+  if { exec 3<>/dev/tty; } 2>/dev/null && [ -t 3 ]; then
+    printf '%s [%s]: ' "$prompt" "$default" >&2
+    read -r -t 60 answer <&3 2>/dev/null || answer=""
+    echo >&2
+    exec 3<&- 2>/dev/null || true
+  else
+    printf '  (no interactive terminal detected -- using default %s for: %s)\n' \
+      "$default" "$prompt" >&2
   fi
   if [[ "$answer" =~ ^[0-9]+$ ]] && [ "$answer" -ge 1 ]; then
     echo "$answer"
