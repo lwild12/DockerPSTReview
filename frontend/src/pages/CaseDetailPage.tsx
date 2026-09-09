@@ -2,6 +2,7 @@ import {
   Badge,
   Button,
   Card,
+  Checkbox,
   Container,
   FileInput,
   Group,
@@ -93,6 +94,8 @@ export function CaseDetailPage() {
   const [importError, setImportError] = useState<string | null>(null);
   const [addToReviewChoice, setAddToReviewChoice] = useState<string | null>(null);
   const [newReviewSetName, setNewReviewSetName] = useState("");
+  const [excludeRedundant, setExcludeRedundant] = useState(true);
+  const [excludeNearDuplicates, setExcludeNearDuplicates] = useState(true);
   const [reviewSetName, setReviewSetName] = useState("");
 
   const { data: caseData } = useQuery({
@@ -191,10 +194,23 @@ export function CaseDetailPage() {
         dedup_status: "primary",
         page_size: 5000,
       });
+      let toAdd = primaryDocs;
+      if (excludeRedundant) {
+        toAdd = toAdd.filter((d) => !(d.doc_type === "email" && !d.is_inclusive_email));
+      }
+      if (excludeNearDuplicates) {
+        const seenClusters = new Set<string>();
+        toAdd = toAdd.filter((d) => {
+          if (!d.near_duplicate_cluster_id) return true;
+          if (seenClusters.has(d.near_duplicate_cluster_id)) return false;
+          seenClusters.add(d.near_duplicate_cluster_id);
+          return true;
+        });
+      }
       return addDocumentsToReviewSet(
         caseId,
         reviewSetId,
-        primaryDocs.map((d) => d.id),
+        toAdd.map((d) => d.id),
       );
     },
     onSuccess: () => {
@@ -556,6 +572,24 @@ export function CaseDetailPage() {
             Adds all {stats?.documents_primary ?? 0} unique documents (duplicates are skipped
             automatically).
           </Text>
+          <Checkbox
+            label="Exclude redundant thread messages"
+            description="Emails whose content is fully quoted in a later message in the same thread"
+            checked={excludeRedundant}
+            onChange={(e) => setExcludeRedundant(e.currentTarget.checked)}
+          />
+          <Checkbox
+            label="Exclude near-duplicates"
+            description="Keep only one document from each near-duplicate group"
+            checked={excludeNearDuplicates}
+            onChange={(e) => setExcludeNearDuplicates(e.currentTarget.checked)}
+          />
+          {(excludeRedundant || excludeNearDuplicates) && !analytics?.computed_at && (
+            <Text size="xs" c="orange">
+              Review analytics hasn't been computed for this case yet, so these won't exclude
+              anything right now — run it above first.
+            </Text>
+          )}
           <Select
             label="Review set"
             placeholder="Choose an existing set, or create a new one"
