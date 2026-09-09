@@ -146,9 +146,18 @@ suggest_concurrency() {
 # rather than relying on `read -p`'s inline, unterminated prompt, so a
 # still-waiting read can't look identical to a hang behind a line-buffered
 # terminal or log viewer.
+#
+# Under `sudo` (its default use_pty setting relays the previous prompt's
+# Enter keypress back into the terminal asynchronously), a stray leftover
+# newline can otherwise land right as the next read() starts and satisfy
+# it instantly, silently defaulting that prompt with no visible sign
+# anything went wrong -- pausing briefly and discarding anything already
+# buffered before reading avoids racing that relay traffic.
 ask_number() {
-  local prompt="$1" default="$2" answer=""
+  local prompt="$1" default="$2" answer="" junk=""
   if { exec 3<>/dev/tty; } 2>/dev/null && [ -t 3 ]; then
+    sleep 0.3
+    while read -r -t 0 junk <&3 2>/dev/null; do :; done
     printf '%s [%s]: ' "$prompt" "$default" >&2
     read -r -t 60 answer <&3 2>/dev/null || answer=""
     echo >&2
