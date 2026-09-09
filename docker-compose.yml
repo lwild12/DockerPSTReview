@@ -73,6 +73,8 @@ services:
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
       BACKEND_CORS_ORIGINS: ${BACKEND_CORS_ORIGINS:-http://localhost}
       ENABLE_API_DOCS: ${ENABLE_API_DOCS:-false}
+      RENDER_CONCURRENCY: ${RENDER_CONCURRENCY:-4}
+      PARSE_CONCURRENCY: ${PARSE_CONCURRENCY:-8}
     volumes:
       - case_storage:/data
     depends_on:
@@ -82,7 +84,15 @@ services:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
-    command: ["celery", "-A", "app.celery_app", "worker", "--loglevel=INFO", "--concurrency=2"]
+    command:
+      [
+        "celery",
+        "-A",
+        "app.celery_app",
+        "worker",
+        "--loglevel=INFO",
+        "--concurrency=${CELERY_WORKER_CONCURRENCY:-2}",
+      ]
 
   frontend:
     build:

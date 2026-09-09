@@ -14,11 +14,16 @@ def render_office_document_to_pdf(content: bytes, filename: str, timeout: int = 
         tmp_path = Path(tmp)
         src = tmp_path / (filename or "document")
         src.write_bytes(content)
+        # soffice defaults to a shared profile dir -- concurrent invocations
+        # against it collide and fail with a profile lock error, so each call
+        # gets its own throwaway profile to make parallel rendering safe.
+        profile_dir = tmp_path / "profile"
         try:
             result = subprocess.run(
                 [
                     "soffice",
                     "--headless",
+                    f"-env:UserInstallation=file://{profile_dir}",
                     "--convert-to",
                     "pdf",
                     "--outdir",

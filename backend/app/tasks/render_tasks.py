@@ -114,15 +114,36 @@ async def render_document(document_id: uuid.UUID, db: AsyncSession) -> None:
 
 async def render_documents_for_job(import_job_id: uuid.UUID, db: AsyncSession) -> None:
     """Render every primary (non-duplicate) document from one import job.
-    Duplicates reuse their primary's rendered PDF at export time instead."""
+    Duplicates reuse their primary's rendered PDF at export time instead.
+
+    Renders up to settings.render_concurrency documents at once. AsyncSession
+    isn't safe to share across concurrent coroutines, so each concurrent
+    render gets its own short-lived session -- bound to the same engine as
+    the caller's session, not a new one, so this works against whatever
+    database `db` is actually pointed at (the real database_url setting in
+    production, an isolated per-test database under pytest). The actual
+    rendering work (WeasyPrint/soffice/Tesseract) happens in a thread via
+    render_document's asyncio.to_thread call, so this achieves real
+    parallelism despite the GIL."""
     result = await db.execute(
         select(Document.id).where(
             Document.import_job_id == import_job_id,
             Document.dedup_status == DedupStatus.primary,
         )
     )
-    for (document_id,) in result.all():
-        await render_document(document_id, db)
+    document_ids = [row[0] for row in result.all()]
+    if not document_ids:
+        return
+
+    concurrency = max(1, settings.render_concurrency)
+    session_maker = async_sessionmaker(db.bind, expire_on_commit=False)
+    semaphore = asyncio.Semaphore(concurrency)
+
+    async def _render_one(document_id: uuid.UUID) -> None:
+        async with semaphore, session_maker() as session:
+            await render_document(document_id, session)
+
+    await asyncio.gather(*(_render_one(document_id) for document_id in document_ids))
 
 
 async def _render_document_standalone(document_id: uuid.UUID) -> None:

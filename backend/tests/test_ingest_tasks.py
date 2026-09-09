@@ -1,3 +1,5 @@
+import threading
+import time
 import uuid
 
 from app.models.case import Case, CaseMembership, CaseRole, Custodian
@@ -6,6 +8,7 @@ from app.models.importjob import ImportStatus, PSTImportJob
 from app.models.user import User
 from app.services import pst_extraction
 from app.services.pst_extraction import ExtractionResult, ManifestEntry
+from app.tasks import ingest_tasks
 from app.tasks.ingest_tasks import run_import_job
 
 
@@ -195,3 +198,49 @@ async def test_parse_failures_are_captured_with_details(db_session, tmp_path, mo
     assert details[0]["folder_path"] == "Inbox/Corrupt"
     assert details[0]["doc_type"] == "email"
     assert details[0]["error"]
+
+
+async def test_staging_entries_are_parsed_concurrently(db_session, tmp_path, monkeypatch):
+    _, job = await _make_case_and_job(db_session, tmp_path)
+    monkeypatch.setattr(ingest_tasks.settings, "parse_concurrency", 3)
+
+    entries = [
+        ManifestEntry(
+            id=f"e{i}",
+            doc_type="email",
+            staged_path=str(tmp_path / f"{i}.eml"),
+            folder_path="Inbox",
+        )
+        for i in range(6)
+    ]
+    fake_result = ExtractionResult(entries=entries, fallback_used=False)
+    monkeypatch.setattr(pst_extraction, "extract_pst", lambda pst_path, staging: fake_result)
+
+    lock = threading.Lock()
+    state = {"current": 0, "max": 0}
+
+    def _fake_stage_entry(entry, job):
+        with lock:
+            state["current"] += 1
+            state["max"] = max(state["max"], state["current"])
+        time.sleep(0.1)
+        with lock:
+            state["current"] -= 1
+        return [
+            Document(
+                id=uuid.uuid4(),
+                case_id=job.case_id,
+                import_job_id=job.id,
+                doc_type=DocType.email,
+                subject=entry.id,
+                body_text="hi",
+                content_hash=str(uuid.uuid4()),
+            )
+        ]
+
+    monkeypatch.setattr(ingest_tasks, "_stage_entry", _fake_stage_entry)
+
+    await run_import_job(job.id, db_session)
+
+    assert state["max"] >= 2, "entries should stage concurrently, not one at a time"
+    assert state["max"] <= 3, "concurrency should be bounded by settings.parse_concurrency"
