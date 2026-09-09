@@ -1,5 +1,4 @@
 import {
-  Anchor,
   Badge,
   Button,
   Checkbox,
@@ -15,7 +14,6 @@ import {
 } from "@mantine/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
 
 import {
   listAdminUsers,
@@ -156,10 +154,7 @@ export function AdminPage() {
 
   return (
     <Container size="lg" py="xl">
-      <Anchor component={Link} to="/cases" size="sm">
-        ← Back to cases
-      </Anchor>
-      <Title order={2} mt="sm" mb="lg">
+      <Title order={2} mb="lg">
         Admin
       </Title>
 

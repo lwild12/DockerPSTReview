@@ -1,6 +1,7 @@
-import { Anchor, Badge, Button, Container, Group, Stack, Text, Title } from "@mantine/core";
+import { Badge, Button, Container, Group, Stack, Text, Title } from "@mantine/core";
+import { IconFileExport } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
 
 import {
   batesLabel,
@@ -12,6 +13,7 @@ import {
 } from "../api/exportJobs";
 import { listReviewSets } from "../api/reviewSets";
 import { BatesExportForm } from "../components/BatesExportForm";
+import { EmptyState } from "../components/EmptyState";
 
 const STATUS_COLOR: Record<string, string> = {
   pending: "gray",
@@ -49,10 +51,7 @@ export function ExportPage() {
 
   return (
     <Container size="md" py="xl">
-      <Anchor component={Link} to={`/cases/${caseId}`} size="sm">
-        ← Back to case
-      </Anchor>
-      <Title order={2} mt="sm" mb="lg">
+      <Title order={2} mb="lg">
         Export
       </Title>
 
@@ -110,7 +109,13 @@ export function ExportPage() {
             </Group>
           </Group>
         ))}
-        {jobs?.length === 0 && <Text c="dimmed">No exports yet.</Text>}
+        {jobs?.length === 0 && (
+          <EmptyState
+            icon={IconFileExport}
+            title="No exports yet"
+            description="Use the form above to produce a Bates-numbered production or a combined PDF."
+          />
+        )}
       </Stack>
     </Container>
   );

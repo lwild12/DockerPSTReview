@@ -2,8 +2,10 @@ import {
   Badge,
   Button,
   Card,
+  Center,
   Container,
   Group,
+  Loader,
   Modal,
   Stack,
   Text,
@@ -12,15 +14,15 @@ import {
   Title,
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
+import { IconFolderOpen } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 
 import { createCase, listCases } from "../api/cases";
-import { useAuth } from "../hooks/useAuth";
+import { EmptyState } from "../components/EmptyState";
 
 export function CaseListPage() {
-  const { user, logout } = useAuth();
   const queryClient = useQueryClient();
   const [opened, { open, close }] = useDisclosure(false);
   const [name, setName] = useState("");
@@ -47,26 +49,14 @@ export function CaseListPage() {
     <Container size="md" py="xl">
       <Group justify="space-between" mb="lg">
         <Title order={2}>Cases</Title>
-        <Group>
-          <Text size="sm" c="dimmed">
-            {user?.email}
-          </Text>
-          {user?.is_superuser && (
-            <Button component={Link} to="/admin" variant="subtle">
-              Admin
-            </Button>
-          )}
-          <Button variant="subtle" onClick={() => { logout().catch(() => {}); }}>
-            Sign out
-          </Button>
-        </Group>
-      </Group>
-
-      <Group justify="flex-end" mb="md">
         <Button onClick={open}>New case</Button>
       </Group>
 
-      {isLoading && <Text>Loading...</Text>}
+      {isLoading && (
+        <Center py={60}>
+          <Loader />
+        </Center>
+      )}
 
       <Stack>
         {cases?.map((c) => (
@@ -83,7 +73,11 @@ export function CaseListPage() {
           </Card>
         ))}
         {cases?.length === 0 && !isLoading && (
-          <Text c="dimmed">No cases yet. Create one to get started.</Text>
+          <EmptyState
+            icon={IconFolderOpen}
+            title="No cases yet"
+            description="Create a case to start importing PSTs and reviewing documents."
+          />
         )}
       </Stack>
 

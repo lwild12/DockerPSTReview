@@ -1,10 +1,11 @@
 import {
   ActionIcon,
-  Anchor,
   Badge,
   Button,
+  Center,
   Container,
   Group,
+  Loader,
   Modal,
   Select,
   Stack,
@@ -14,10 +15,10 @@ import {
   Title,
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
-import { IconPlus, IconX } from "@tabler/icons-react";
+import { IconForms, IconPlus, IconX } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
-import { Link, useParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
 
 import { getCase } from "../api/cases";
 import {
@@ -27,6 +28,7 @@ import {
   updateCodingField,
   type CodingFieldType,
 } from "../api/codingFields";
+import { EmptyState } from "../components/EmptyState";
 
 function OptionEditor({
   options,
@@ -152,10 +154,7 @@ export function CodingFieldsPage() {
 
   return (
     <Container size="md" py="xl">
-      <Anchor component={Link} to={`/cases/${caseId}`} size="sm">
-        ← Back to case
-      </Anchor>
-      <Group justify="space-between" mt="sm" mb="lg">
+      <Group justify="space-between" mb="lg">
         <Title order={2}>Coding fields</Title>
         {isAdmin && <Button onClick={openCreateModal}>New field</Button>}
       </Group>
@@ -164,7 +163,11 @@ export function CodingFieldsPage() {
         free-text tags.
       </Text>
 
-      {isLoading && <Text>Loading...</Text>}
+      {isLoading && (
+        <Center py={60}>
+          <Loader />
+        </Center>
+      )}
       {fields && fields.length > 0 && (
         <Table>
           <Table.Thead>
@@ -223,7 +226,13 @@ export function CodingFieldsPage() {
           </Table.Tbody>
         </Table>
       )}
-      {fields?.length === 0 && <Text c="dimmed">No coding fields yet.</Text>}
+      {fields?.length === 0 && (
+        <EmptyState
+          icon={IconForms}
+          title="No coding fields yet"
+          description="Coding fields let reviewers apply consistent structured values (e.g. relevance, privilege) across documents."
+        />
+      )}
 
       <Modal opened={createModal} onClose={closeCreateModal} title="New coding field">
         <form
