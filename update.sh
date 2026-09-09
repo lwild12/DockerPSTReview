@@ -65,6 +65,34 @@ detect_cpu_cores() {
   nproc 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null || echo 2
 }
 
+detect_ram_mb() {
+  if command -v free >/dev/null 2>&1; then
+    free -m | awk '/^Mem:/{print $2}'
+  elif [ -r /proc/meminfo ]; then
+    awk '/^MemTotal:/{print int($2/1024)}' /proc/meminfo
+  else
+    echo 2048
+  fi
+}
+
+# suggest_concurrency CPU_CORES RAM_MB CPU_CAP MB_PER_WORKER -- prints a
+# suggested concurrency: bounded by CPU_CAP (never suggest more workers
+# than makes sense for a single import job), and separately bounded by
+# how many MB_PER_WORKER-sized workers fit in RAM after reserving 1GB for
+# Postgres/Redis/the backend and frontend containers themselves. Whichever
+# constraint is tighter wins, so a low-RAM box doesn't get a suggestion
+# that risks OOM-killing the worker mid-import.
+suggest_concurrency() {
+  local cpu_cores="$1" ram_mb="$2" cpu_cap="$3" mb_per_worker="$4"
+  local cpu_based=$(( cpu_cores < cpu_cap ? cpu_cores : cpu_cap ))
+  local available_mb=$(( ram_mb - 1024 ))
+  [ "$available_mb" -lt 512 ] && available_mb=512
+  local ram_based=$(( available_mb / mb_per_worker ))
+  local suggested=$(( cpu_based < ram_based ? cpu_based : ram_based ))
+  [ "$suggested" -lt 1 ] && suggested=1
+  echo "$suggested"
+}
+
 # ask_number PROMPT DEFAULT -- prints DEFAULT unchanged when there's no
 # real terminal to read from, the prompt times out unanswered, or the
 # answer isn't a positive integer. Reads from /dev/tty rather than stdin
@@ -86,12 +114,11 @@ ask_number() {
 # default, since they're worth sizing to the machine's CPU count.
 if ! grep -q '^RENDER_CONCURRENCY=' .env || ! grep -q '^PARSE_CONCURRENCY=' .env; then
   CPU_CORES="$(detect_cpu_cores)"
-  RENDER_DEFAULT=$(( CPU_CORES < 4 ? CPU_CORES : 4 ))
-  [ "$RENDER_DEFAULT" -lt 1 ] && RENDER_DEFAULT=1
-  PARSE_DEFAULT=$(( CPU_CORES * 2 < 8 ? CPU_CORES * 2 : 8 ))
-  [ "$PARSE_DEFAULT" -lt 1 ] && PARSE_DEFAULT=1
+  RAM_MB="$(detect_ram_mb)"
+  RENDER_DEFAULT="$(suggest_concurrency "$CPU_CORES" "$RAM_MB" 4 400)"
+  PARSE_DEFAULT="$(suggest_concurrency "$CPU_CORES" "$RAM_MB" 8 150)"
   echo
-  log "This update adds parallel PST import processing, not yet configured in your .env (detected ${CPU_CORES} CPU core(s)). Press Enter to accept the suggested defaults, or adjust later in .env."
+  log "This update adds parallel PST import processing, not yet configured in your .env (detected ${CPU_CORES} CPU core(s), ${RAM_MB}MB RAM). Press Enter to accept the suggested defaults, or adjust later in .env."
   if ! grep -q '^RENDER_CONCURRENCY=' .env; then
     set_env_var RENDER_CONCURRENCY "$(ask_number "  Documents to render (PDF/OCR) at once per import" "$RENDER_DEFAULT")"
   fi
