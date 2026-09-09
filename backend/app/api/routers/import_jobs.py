@@ -8,10 +8,10 @@ from app.auth.dependencies import require_case_admin, require_case_member
 from app.auth.users import current_active_user
 from app.db import get_db
 from app.models.case import CaseMembership
-from app.models.document import DedupStatus, Document
+from app.models.document import DedupStatus, Document, OcrStatus
 from app.models.importjob import PSTImportJob
 from app.models.user import User
-from app.schemas.importjob import ImportJobRead
+from app.schemas.importjob import FailedDocumentSummary, ImportJobRead
 from app.services import storage
 from app.services.audit import record_audit
 from app.tasks.ingest_tasks import run_import_job_task
@@ -112,3 +112,24 @@ async def get_import_job(
     if job is None or job.case_id != case_id:
         raise HTTPException(status_code=404, detail="Import job not found")
     return await _to_read(job, db)
+
+
+@router.get("/{import_job_id}/failed-documents", response_model=list[FailedDocumentSummary])
+async def list_failed_documents(
+    case_id: uuid.UUID,
+    import_job_id: uuid.UUID,
+    _membership: CaseMembership = Depends(require_case_member),
+    db: AsyncSession = Depends(get_db),
+):
+    job = await db.get(PSTImportJob, import_job_id)
+    if job is None or job.case_id != case_id:
+        raise HTTPException(status_code=404, detail="Import job not found")
+    result = await db.execute(
+        select(Document)
+        .where(
+            Document.import_job_id == import_job_id,
+            (Document.render_error != "") | (Document.ocr_status == OcrStatus.failed),
+        )
+        .order_by(Document.subject)
+    )
+    return result.scalars().all()

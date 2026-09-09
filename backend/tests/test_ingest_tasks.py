@@ -160,3 +160,38 @@ async def test_pipeline_stages_contact_and_calendar_entries(db_session, tmp_path
     assert by_type[DocType.contact].subject == "Jane Doe"
     assert by_type[DocType.contact].structured_metadata["emails"] == ["jane@x.com"]
     assert by_type[DocType.calendar].subject == "Quarterly review"
+
+
+async def test_parse_failures_are_captured_with_details(db_session, tmp_path, monkeypatch):
+    case, job = await _make_case_and_job(db_session, tmp_path)
+
+    good_email = _write_eml(
+        tmp_path,
+        "good.eml",
+        b"From: alice@x.com\nTo: bob@x.com\nSubject: Hi\nMessage-ID: <m1@x.com>\n\nHello Bob\n",
+    )
+
+    fake_result = ExtractionResult(
+        entries=[
+            ManifestEntry(id="e1", doc_type="email", staged_path=good_email, folder_path="Inbox"),
+            ManifestEntry(
+                id="e2",
+                doc_type="email",
+                staged_path=str(tmp_path / "missing.eml"),
+                folder_path="Inbox/Corrupt",
+            ),
+        ],
+        fallback_used=False,
+    )
+    monkeypatch.setattr(pst_extraction, "extract_pst", lambda pst_path, staging: fake_result)
+
+    await run_import_job(job.id, db_session)
+
+    refreshed = await db_session.get(PSTImportJob, job.id)
+    assert refreshed.stats["parse_errors"] == 1
+    assert refreshed.stats["emails"] == 1
+    details = refreshed.stats["parse_error_details"]
+    assert len(details) == 1
+    assert details[0]["folder_path"] == "Inbox/Corrupt"
+    assert details[0]["doc_type"] == "email"
+    assert details[0]["error"]

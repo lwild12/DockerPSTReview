@@ -114,3 +114,68 @@ async def test_import_job_reports_rendering_progress(client, db_session):
     assert listed_job["documents_total"] == 3
     assert listed_job["documents_rendered"] == 1
     assert listed_job["documents_render_failed"] == 1
+
+
+async def test_failed_documents_endpoint_lists_render_and_ocr_failures(client, db_session):
+    import uuid
+
+    from app.models.document import DocType, Document, OcrStatus
+
+    case_id, custodian_id = await _setup_case_with_custodian(client)
+
+    create_resp = await client.post(
+        f"/api/cases/{case_id}/import-jobs",
+        data={"custodian_id": custodian_id},
+        files={"file": ("sample.pst", b"fake pst bytes", "application/octet-stream")},
+    )
+    job_id = create_resp.json()["id"]
+    other_job_resp = await client.post(
+        f"/api/cases/{case_id}/import-jobs",
+        data={"custodian_id": custodian_id},
+        files={"file": ("other.pst", b"fake pst bytes 2", "application/octet-stream")},
+    )
+    other_job_id = other_job_resp.json()["id"]
+
+    def _doc(job_id_str, **overrides):
+        defaults = dict(
+            id=uuid.uuid4(),
+            case_id=uuid.UUID(case_id),
+            import_job_id=uuid.UUID(job_id_str),
+            doc_type=DocType.email,
+            subject="doc",
+            content_hash=str(uuid.uuid4()),
+        )
+        defaults.update(overrides)
+        return Document(**defaults)
+
+    db_session.add(_doc(job_id, subject="ok.pdf", rendered_pdf_path="/data/a.pdf"))
+    db_session.add(_doc(job_id, subject="broken.docx", render_error="LibreOffice timed out"))
+    db_session.add(
+        _doc(
+            job_id,
+            subject="scan.png",
+            doc_type=DocType.attachment,
+            ocr_status=OcrStatus.failed,
+            ocr_error="tesseract not installed",
+        )
+    )
+    db_session.add(_doc(other_job_id, subject="unrelated.docx", render_error="different job"))
+    await db_session.commit()
+
+    resp = await client.get(f"/api/cases/{case_id}/import-jobs/{job_id}/failed-documents")
+    assert resp.status_code == 200
+    failed = resp.json()
+    subjects = {d["subject"] for d in failed}
+    assert subjects == {"broken.docx", "scan.png"}
+    broken = next(d for d in failed if d["subject"] == "broken.docx")
+    assert broken["render_error"] == "LibreOffice timed out"
+    scan = next(d for d in failed if d["subject"] == "scan.png")
+    assert scan["ocr_error"] == "tesseract not installed"
+
+
+async def test_failed_documents_missing_job_returns_404(client):
+    import uuid
+
+    case_id, _ = await _setup_case_with_custodian(client)
+    resp = await client.get(f"/api/cases/{case_id}/import-jobs/{uuid.uuid4()}/failed-documents")
+    assert resp.status_code == 404

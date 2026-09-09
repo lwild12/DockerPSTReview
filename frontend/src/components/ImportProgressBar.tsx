@@ -1,6 +1,9 @@
-import { Alert, Badge, Group, Progress, Stack, Text } from "@mantine/core";
+import { Alert, Anchor, Badge, Collapse, Group, Progress, Stack, Text } from "@mantine/core";
+import { useDisclosure } from "@mantine/hooks";
+import { useQuery } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
 
-import type { ImportJob } from "../api/importJobs";
+import { listFailedDocuments, type ImportJob } from "../api/importJobs";
 
 const STEP_ORDER = ["pending", "extracting", "parsing", "dedup", "rendering"] as const;
 
@@ -31,6 +34,17 @@ export function ImportProgressBar({ job }: { job: ImportJob }) {
     ? Math.round((renderedSoFar / job.documents_total) * 100)
     : progressForStatus(job.status);
 
+  const [detailsOpened, { toggle: toggleDetails }] = useDisclosure(false);
+  const parseErrorDetails = job.stats.parse_error_details ?? [];
+  const totalFailures = (job.stats.parse_errors ?? 0) + job.documents_render_failed;
+  const isTerminal = job.status === "completed" || job.status === "completed_with_errors";
+
+  const { data: failedDocs } = useQuery({
+    queryKey: ["import-job-failed-documents", job.case_id, job.id],
+    queryFn: () => listFailedDocuments(job.case_id, job.id),
+    enabled: detailsOpened && job.documents_render_failed > 0,
+  });
+
   return (
     <Stack gap="xs">
       <Group justify="space-between">
@@ -51,7 +65,7 @@ export function ImportProgressBar({ job }: { job: ImportJob }) {
           {job.error_message}
         </Alert>
       )}
-      {(job.status === "completed" || job.status === "completed_with_errors") && (
+      {isTerminal && (
         <Text size="sm" c="dimmed">
           {job.stats.total_items ?? 0} items — {job.stats.emails ?? 0} emails,{" "}
           {job.stats.attachments ?? 0} attachments, {job.stats.contacts ?? 0} contacts,{" "}
@@ -61,6 +75,36 @@ export function ImportProgressBar({ job }: { job: ImportJob }) {
             : ""}
           {job.stats.fallback_used ? " — used reduced-fidelity mail-only fallback" : ""}
         </Text>
+      )}
+      {isTerminal && totalFailures > 0 && (
+        <>
+          <Anchor size="xs" onClick={toggleDetails}>
+            {detailsOpened ? "Hide" : "View"} {totalFailures} failed item
+            {totalFailures > 1 ? "s" : ""}
+          </Anchor>
+          <Collapse in={detailsOpened}>
+            <Stack gap={4} mt={4}>
+              {parseErrorDetails.map((detail, i) => (
+                <Text key={i} size="xs" c="dimmed">
+                  <Text span fw={600}>
+                    {detail.folder_path || "(unknown folder)"}
+                  </Text>{" "}
+                  ({detail.doc_type}): {detail.error}
+                </Text>
+              ))}
+              {failedDocs?.map((doc) => (
+                <Anchor
+                  key={doc.id}
+                  component={Link}
+                  to={`/cases/${job.case_id}/documents/${doc.id}`}
+                  size="xs"
+                >
+                  {doc.subject || "(no subject)"} — {doc.render_error || doc.ocr_error}
+                </Anchor>
+              ))}
+            </Stack>
+          </Collapse>
+        </>
       )}
     </Stack>
   );
