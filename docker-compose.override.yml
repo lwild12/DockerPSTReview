@@ -12,7 +12,15 @@ services:
     volumes:
       - ./backend/app:/app/app
       - case_storage:/data
-    command: ["celery", "-A", "app.celery_app", "worker", "--loglevel=INFO", "--concurrency=2"]
+    command:
+      [
+        "celery",
+        "-A",
+        "app.celery_app",
+        "worker",
+        "--loglevel=INFO",
+        "--concurrency=${CELERY_WORKER_CONCURRENCY:-2}",
+      ]
 
   frontend:
     build:

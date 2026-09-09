@@ -47,7 +47,7 @@ def _participants_key(document: Document) -> str:
     return ",".join(sorted(p.strip().lower() for p in parts if p))
 
 
-async def _stage_email_entry(entry: ManifestEntry, job: PSTImportJob) -> list[Document]:
+def _stage_email_entry(entry: ManifestEntry, job: PSTImportJob) -> list[Document]:
     raw = Path(entry.staged_path).read_bytes()
     parsed = parse_eml_bytes(raw)
 
@@ -106,7 +106,7 @@ async def _stage_email_entry(entry: ManifestEntry, job: PSTImportJob) -> list[Do
     return documents
 
 
-async def _stage_contact_entry(entry: ManifestEntry, job: PSTImportJob) -> Document:
+def _stage_contact_entry(entry: ManifestEntry, job: PSTImportJob) -> Document:
     data = pst_extraction.parse_vcard_contact(Path(entry.staged_path).read_bytes())
     canonical = "\x1f".join(
         [data.get("full_name", ""), ",".join(sorted(e.lower() for e in data.get("emails", [])))]
@@ -125,7 +125,7 @@ async def _stage_contact_entry(entry: ManifestEntry, job: PSTImportJob) -> Docum
     )
 
 
-async def _stage_calendar_entry(entry: ManifestEntry, job: PSTImportJob) -> Document:
+def _stage_calendar_entry(entry: ManifestEntry, job: PSTImportJob) -> Document:
     data = json.loads(Path(entry.staged_path).read_text())
     content_hash = hashlib.sha256(json.dumps(data, sort_keys=True).encode("utf-8")).hexdigest()
     return Document(
@@ -139,6 +139,16 @@ async def _stage_calendar_entry(entry: ManifestEntry, job: PSTImportJob) -> Docu
         pst_folder_path=entry.folder_path,
         content_hash=content_hash,
     )
+
+
+def _stage_entry(entry: ManifestEntry, job: PSTImportJob) -> list[Document]:
+    if entry.doc_type == "email":
+        return _stage_email_entry(entry, job)
+    if entry.doc_type == "contact":
+        return [_stage_contact_entry(entry, job)]
+    if entry.doc_type == "calendar":
+        return [_stage_calendar_entry(entry, job)]
+    return []
 
 
 async def _run_dedup(case_id: uuid.UUID, db: AsyncSession) -> int:
@@ -243,20 +253,28 @@ async def run_import_job(import_job_id: uuid.UUID, db: AsyncSession) -> None:
     job.stats = stats
     await db.commit()
 
+    # Staging is per-item disk I/O (reading the staged file, writing native
+    # attachment files) and CPU work (parsing, hashing) with nothing shared
+    # between entries, so it runs concurrently in a thread pool -- same
+    # approach as rendering below.
+    parse_concurrency = max(1, settings.parse_concurrency)
+    semaphore = asyncio.Semaphore(parse_concurrency)
+
+    async def _stage_one(entry: ManifestEntry) -> list[Document]:
+        async with semaphore:
+            return await asyncio.to_thread(_stage_entry, entry, job)
+
+    staged = await asyncio.gather(
+        *(_stage_one(entry) for entry in result.entries), return_exceptions=True
+    )
+
     all_documents: list[Document] = []
     parse_errors = 0
     parse_error_details: list[dict] = []
-    for entry in result.entries:
-        try:
-            if entry.doc_type == "email":
-                all_documents.extend(await _stage_email_entry(entry, job))
-            elif entry.doc_type == "contact":
-                all_documents.append(await _stage_contact_entry(entry, job))
-            elif entry.doc_type == "calendar":
-                all_documents.append(await _stage_calendar_entry(entry, job))
-        except Exception as exc:
+    for entry, outcome in zip(result.entries, staged, strict=True):
+        if isinstance(outcome, BaseException):
             logger.warning(
-                "Failed to stage manifest entry %s, skipping it", entry.id, exc_info=True
+                "Failed to stage manifest entry %s, skipping it", entry.id, exc_info=outcome
             )
             parse_errors += 1
             if len(parse_error_details) < 200:
@@ -264,9 +282,11 @@ async def run_import_job(import_job_id: uuid.UUID, db: AsyncSession) -> None:
                     {
                         "doc_type": entry.doc_type,
                         "folder_path": entry.folder_path,
-                        "error": str(exc)[:500],
+                        "error": str(outcome)[:500],
                     }
                 )
+        else:
+            all_documents.extend(outcome)
 
     db.add_all(all_documents)
     await db.flush()
