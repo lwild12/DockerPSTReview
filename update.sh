@@ -51,6 +51,55 @@ log "Fetching latest code..."
 git fetch origin
 git pull --ff-only
 
+set_env_var() {
+  # set_env_var KEY VALUE -- updates KEY in .env in place, or appends it
+  # if it isn't there yet (older .env files predate some settings).
+  if grep -q "^$1=" .env; then
+    sed -i "s#^$1=.*#$1=$2#" .env
+  else
+    echo "$1=$2" >>.env
+  fi
+}
+
+detect_cpu_cores() {
+  nproc 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null || echo 2
+}
+
+# ask_number PROMPT DEFAULT -- prints DEFAULT unchanged when there's no
+# real terminal to read from, the prompt times out unanswered, or the
+# answer isn't a positive integer. Reads from /dev/tty rather than stdin
+# so this still works under `curl ... | sudo bash`.
+ask_number() {
+  local prompt="$1" default="$2" answer=""
+  if [ -r /dev/tty ]; then
+    read -r -t 60 -p "$prompt [${default}]: " answer </dev/tty 2>/dev/null || answer=""
+  fi
+  if [[ "$answer" =~ ^[0-9]+$ ]] && [ "$answer" -ge 1 ]; then
+    echo "$answer"
+  else
+    echo "$default"
+  fi
+}
+
+# RENDER_CONCURRENCY/PARSE_CONCURRENCY predate this update on older
+# installs -- ask for them once here instead of silently applying a
+# default, since they're worth sizing to the machine's CPU count.
+if ! grep -q '^RENDER_CONCURRENCY=' .env || ! grep -q '^PARSE_CONCURRENCY=' .env; then
+  CPU_CORES="$(detect_cpu_cores)"
+  RENDER_DEFAULT=$(( CPU_CORES < 4 ? CPU_CORES : 4 ))
+  [ "$RENDER_DEFAULT" -lt 1 ] && RENDER_DEFAULT=1
+  PARSE_DEFAULT=$(( CPU_CORES * 2 < 8 ? CPU_CORES * 2 : 8 ))
+  [ "$PARSE_DEFAULT" -lt 1 ] && PARSE_DEFAULT=1
+  echo
+  log "This update adds parallel PST import processing, not yet configured in your .env (detected ${CPU_CORES} CPU core(s)). Press Enter to accept the suggested defaults, or adjust later in .env."
+  if ! grep -q '^RENDER_CONCURRENCY=' .env; then
+    set_env_var RENDER_CONCURRENCY "$(ask_number "  Documents to render (PDF/OCR) at once per import" "$RENDER_DEFAULT")"
+  fi
+  if ! grep -q '^PARSE_CONCURRENCY=' .env; then
+    set_env_var PARSE_CONCURRENCY "$(ask_number "  Documents to parse at once per import" "$PARSE_DEFAULT")"
+  fi
+fi
+
 if [ -f .env.example ]; then
   NEW_KEYS="$(comm -23 \
     <(grep -oE '^[A-Z_]+' .env.example | sort -u) \
