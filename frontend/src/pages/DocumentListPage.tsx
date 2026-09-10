@@ -31,6 +31,7 @@ export function DocumentListPage() {
   const [docType, setDocType] = useState<string | null>(null);
   const [dedupStatus, setDedupStatus] = useState<string | null>(null);
   const [inclusiveFilter, setInclusiveFilter] = useState<string | null>(null);
+  const [aiRelevanceFilter, setAiRelevanceFilter] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const clusterFilter = searchParams.get("near_duplicate_cluster_id");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -40,13 +41,24 @@ export function DocumentListPage() {
   const [bulkTagChoice, setBulkTagChoice] = useState<string | null>(null);
 
   const { data: documents, isLoading } = useQuery({
-    queryKey: ["documents", caseId, docType, dedupStatus, inclusiveFilter, clusterFilter, search],
+    queryKey: [
+      "documents",
+      caseId,
+      docType,
+      dedupStatus,
+      inclusiveFilter,
+      clusterFilter,
+      aiRelevanceFilter,
+      search,
+    ],
     queryFn: () =>
       listDocuments(caseId, {
         doc_type: (docType as DocType) || undefined,
         dedup_status: (dedupStatus as DedupStatus) || undefined,
         is_inclusive_email: inclusiveFilter ? inclusiveFilter === "true" : undefined,
         near_duplicate_cluster_id: clusterFilter || undefined,
+        ai_relevance_status: aiRelevanceFilter === "failed" ? "failed" : undefined,
+        ai_relevance_min_score: aiRelevanceFilter === "high" ? 70 : undefined,
         q: search || undefined,
       }),
     enabled: caseId !== "",
@@ -148,6 +160,17 @@ export function DocumentListPage() {
           value={inclusiveFilter}
           onChange={setInclusiveFilter}
           w={240}
+        />
+        <Select
+          placeholder="All AI relevance"
+          clearable
+          data={[
+            { value: "high", label: "High relevance (70+)" },
+            { value: "failed", label: "AI scoring failed" },
+          ]}
+          value={aiRelevanceFilter}
+          onChange={setAiRelevanceFilter}
+          w={200}
         />
         <TextInput
           placeholder="Search subject/body/sender"

@@ -8,7 +8,12 @@ celery_app = Celery(
     "pstreview",
     broker=settings.redis_url,
     backend=settings.redis_url,
-    include=["app.tasks.ingest_tasks", "app.tasks.render_tasks", "app.tasks.export_tasks"],
+    include=[
+        "app.tasks.ingest_tasks",
+        "app.tasks.render_tasks",
+        "app.tasks.export_tasks",
+        "app.tasks.ai_review_tasks",
+    ],
 )
 
 celery_app.conf.update(

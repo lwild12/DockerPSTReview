@@ -12,15 +12,17 @@ import {
   Select,
   Stack,
   Text,
+  Textarea,
   TextInput,
   ThemeIcon,
   Title,
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
+import { getAiReviewSummary, runAiReview, updateAiReviewCriteria } from "../api/aiReview";
 import { getCaseAnalytics, recomputeCaseAnalytics } from "../api/analytics";
 import {
   addMember,
@@ -147,9 +149,28 @@ export function CaseDetailPage() {
     queryFn: () => getCaseAnalytics(caseId),
     enabled,
   });
+  const { data: aiReview } = useQuery({
+    queryKey: ["ai-review", caseId],
+    queryFn: () => getAiReviewSummary(caseId),
+    enabled,
+    refetchInterval: (query) => {
+      const s = query.state.data;
+      const stillRunning = s ? s.running_count > 0 || s.queued_count > 0 : false;
+      return stillRunning ? 2000 : false;
+    },
+  });
 
   const isAdmin = caseData?.my_role === "admin";
   const canEdit = caseData?.my_role === "admin" || caseData?.my_role === "reviewer";
+
+  const [aiCriteria, setAiCriteria] = useState("");
+  const [aiCriteriaInitialized, setAiCriteriaInitialized] = useState(false);
+  useEffect(() => {
+    if (aiCriteriaInitialized || !aiReview) return;
+    setAiCriteria(aiReview.criteria);
+    setAiCriteriaInitialized(true);
+  }, [aiReview, aiCriteriaInitialized]);
+  const [rescoreAll, setRescoreAll] = useState(false);
 
   const addMemberMutation = useMutation({
     mutationFn: () => addMember(caseId, memberEmail, memberRole),
@@ -236,6 +257,16 @@ export function CaseDetailPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["case-analytics", caseId] });
     },
+  });
+
+  const saveAiCriteriaMutation = useMutation({
+    mutationFn: () => updateAiReviewCriteria(caseId, aiCriteria),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["ai-review", caseId] }),
+  });
+
+  const runAiReviewMutation = useMutation({
+    mutationFn: () => runAiReview(caseId, rescoreAll),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["ai-review", caseId] }),
   });
 
   const deleteCaseMutation = useMutation({
@@ -392,6 +423,85 @@ export function CaseDetailPage() {
         ) : (
           <Text size="sm" c="dimmed">
             Not computed yet for this case.
+          </Text>
+        )}
+      </Card>
+
+      <Card withBorder radius="md" p="lg" mb="md">
+        <Title order={4} mb="xs">
+          AI pre-review
+        </Title>
+        <Text size="sm" c="dimmed" mb="sm">
+          Scores each document against your relevance criteria using a connected Ollama model.
+          Scores are advisory only, meant to assist human review — never a final relevance call.
+        </Text>
+        {aiReview && !aiReview.ollama_configured && (
+          <Text size="sm" c="orange" mb="sm">
+            Ollama isn't configured yet — an admin can set it up on the Admin page.
+          </Text>
+        )}
+        <Textarea
+          label="Relevance criteria"
+          description="Describe what makes a document relevant to this case."
+          minRows={3}
+          mb="sm"
+          value={aiCriteria}
+          onChange={(e) => setAiCriteria(e.currentTarget.value)}
+          disabled={!canEdit}
+        />
+        {canEdit && (
+          <Button
+            size="xs"
+            variant="light"
+            mb="sm"
+            onClick={() => saveAiCriteriaMutation.mutate()}
+            loading={saveAiCriteriaMutation.isPending}
+            disabled={!aiReview || aiCriteria === aiReview.criteria}
+          >
+            Save criteria
+          </Button>
+        )}
+        {aiReview && (
+          <Text size="sm" mb="sm">
+            <b>{aiReview.candidate_count}</b> candidate document
+            {aiReview.candidate_count === 1 ? "" : "s"}
+            {aiReview.candidate_count > 0 && (
+              <>
+                {" "}
+                — <b>{aiReview.completed_count}</b> scored, <b>{aiReview.failed_count}</b> failed,{" "}
+                <b>{aiReview.unscored_count}</b> not yet scored
+              </>
+            )}
+            {aiReview.last_run_completed_at && (
+              <> — last run completed {new Date(aiReview.last_run_completed_at).toLocaleString()}</>
+            )}
+          </Text>
+        )}
+        {isAdmin && (
+          <Group gap="sm">
+            <Checkbox
+              label="Rescore everything"
+              description="Otherwise only new, failed, or criteria-changed documents are (re)scored."
+              checked={rescoreAll}
+              onChange={(e) => setRescoreAll(e.currentTarget.checked)}
+            />
+            <Button
+              size="xs"
+              onClick={() => runAiReviewMutation.mutate()}
+              loading={
+                runAiReviewMutation.isPending ||
+                (aiReview?.running_count ?? 0) > 0 ||
+                (aiReview?.queued_count ?? 0) > 0
+              }
+              disabled={!aiReview?.ollama_configured || !aiReview?.candidate_count}
+            >
+              Run AI review
+            </Button>
+          </Group>
+        )}
+        {runAiReviewMutation.isError && (
+          <Text c="red" size="sm" mt="xs">
+            Couldn't start the run — check that Ollama is configured correctly.
           </Text>
         )}
       </Card>
