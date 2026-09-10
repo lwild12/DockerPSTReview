@@ -2,7 +2,7 @@ import logging
 import shutil
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -79,6 +79,7 @@ async def get_case(
 @router.delete("/{case_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_case(
     case_id: uuid.UUID,
+    background_tasks: BackgroundTasks,
     _membership: CaseMembership = Depends(require_case_admin),
     user: User = Depends(current_active_user),
     db: AsyncSession = Depends(get_db),
@@ -114,7 +115,14 @@ async def delete_case(
     await db.execute(delete(PSTImportJob).where(PSTImportJob.case_id == case_id))
     await db.delete(case)
     await db.commit()
-    shutil.rmtree(case_root(case_id), ignore_errors=True)
+    # The case is already gone from the app the moment the transaction above
+    # commits; walking and unlinking its on-disk files (rendered PDFs, native
+    # attachments, the original uploaded PST -- easily thousands of files and
+    # gigabytes for a real case) is synchronous I/O that would otherwise block
+    # this async endpoint's event loop for however long that takes. Runs
+    # after the response is sent instead, in a worker thread, so deletion
+    # itself stays fast regardless of how much there is to clean up.
+    background_tasks.add_task(shutil.rmtree, case_root(case_id), ignore_errors=True)
 
 
 @router.get("/{case_id}/stats", response_model=CaseStats)
