@@ -160,19 +160,39 @@ suggest_concurrency() {
 #
 # Under `sudo` (its default use_pty setting relays the previous prompt's
 # Enter keypress back into the terminal asynchronously), a stray leftover
-# newline can otherwise land right as the next read() starts and satisfy
-# it instantly, silently defaulting that prompt with no visible sign
-# anything went wrong -- pausing briefly and discarding anything already
-# buffered before reading avoids racing that relay traffic.
+# newline -- or, it turns out, a whole duplicated answer -- can otherwise
+# land right as the next read() starts and satisfy it instantly, silently
+# feeding that prompt an answer the user never typed for it. A single
+# fixed-length pause before draining wasn't a wide enough margin: in
+# practice the relay's lag varies enough that the duplicate can still land
+# just after a short, fixed wait. _settle_tty instead waits for a real
+# stretch of quiet (no draining resets the clock), and ask_number
+# additionally distrusts any answer that arrives suspiciously fast after
+# its prompt is printed -- no person can read a prompt and answer it in
+# well under a fifth of a second, so that's leftover relay traffic, not a
+# real answer, and falling back to the default is safer than trusting it.
+_settle_tty() {
+  local quiet_streak=0 junk=""
+  while [ "$quiet_streak" -lt 6 ]; do
+    if read -r -t 0.15 junk <&3 2>/dev/null; then
+      quiet_streak=0
+    else
+      quiet_streak=$((quiet_streak + 1))
+    fi
+  done
+}
+
 ask_number() {
-  local prompt="$1" default="$2" answer="" junk=""
+  local prompt="$1" default="$2" answer="" started_at="" elapsed_ms=""
   if { exec 3<>/dev/tty; } 2>/dev/null && [ -t 3 ]; then
-    sleep 0.3
-    while read -r -t 0 junk <&3 2>/dev/null; do :; done
+    _settle_tty
     printf '%s [%s]: ' "$prompt" "$default" >&2
+    started_at="$(date +%s%N)"
     read -r -t 60 answer <&3 2>/dev/null || answer=""
     echo >&2
     exec 3<&- 2>/dev/null || true
+    elapsed_ms=$(( ($(date +%s%N) - started_at) / 1000000 ))
+    [ "$elapsed_ms" -lt 150 ] && answer=""
   else
     printf '  (no interactive terminal detected -- using default %s for: %s)\n' \
       "$default" "$prompt" >&2
