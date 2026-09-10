@@ -175,6 +175,13 @@ def test_render_unsupported_placeholder_to_pdf():
     assert "deadbeef" in text
 
 
+_A4_DIMENSIONS_PT = {(595, 841), (595, 842), (841, 595), (842, 595)}
+
+
+def _is_a4(page) -> bool:
+    return (round(page.rect.width), round(page.rect.height)) in _A4_DIMENSIONS_PT
+
+
 def test_render_image_to_pdf_roundtrips():
     img = Image.new("RGB", (100, 50), color="red")
     buf = io.BytesIO()
@@ -183,6 +190,20 @@ def test_render_image_to_pdf_roundtrips():
     assert pdf_bytes.startswith(b"%PDF")
     with fitz.open(stream=pdf_bytes, filetype="pdf") as doc:
         assert doc.page_count == 1
+
+
+def test_render_image_to_pdf_uses_a4_regardless_of_the_images_own_dimensions():
+    # Regression test: without an explicit layout, img2pdf sizes the PDF
+    # page to the image's own pixel dimensions -- every image attachment
+    # got its own oddly-sized page instead of the A4 every other rendered
+    # document type uses.
+    for width, height in [(1600, 1200), (3000, 800), (600, 1800)]:
+        img = Image.new("RGB", (width, height), color="blue")
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        pdf_bytes = render_image_to_pdf(buf.getvalue())
+        with fitz.open(stream=pdf_bytes, filetype="pdf") as doc:
+            assert _is_a4(doc[0]), f"{width}x{height} image did not render onto an A4 page"
 
 
 def test_render_image_to_pdf_raises_on_garbage():

@@ -1,4 +1,4 @@
-import { Alert, Center, Loader, Pagination, Stack } from "@mantine/core";
+import { Alert, Center, Loader, Stack, Text } from "@mantine/core";
 import { useState } from "react";
 import { Document as PdfDocument, Page as PdfPage, pdfjs } from "react-pdf";
 
@@ -15,31 +15,25 @@ pdfjs.GlobalWorkerOptions.workerSrc = new URL(
 
 const RENDER_WIDTH_PX = 720;
 
-export function PdfViewer({
-  url,
-  redactions = [],
-  readOnly = true,
-  redactionTool = "draw",
+function PdfPageBlock({
+  pageNumber,
+  redactions,
+  readOnly,
+  redactionTool,
   onCreateRedaction,
   onDeleteRedaction,
   onUpdateRedactionReason,
 }: {
-  url: string;
-  redactions?: Redaction[];
-  readOnly?: boolean;
-  redactionTool?: "draw" | "select";
+  pageNumber: number;
+  redactions: Redaction[];
+  readOnly: boolean;
+  redactionTool: "draw" | "select";
   onCreateRedaction?: (pageNumber: number, rect: { x: number; y: number; width: number; height: number }) => void;
   onDeleteRedaction?: (redactionId: string) => void;
   onUpdateRedactionReason?: (redactionId: string, reason: string) => void;
 }) {
-  const [numPages, setNumPages] = useState<number | null>(null);
-  const [pageNumber, setPageNumber] = useState(1);
-  const [error, setError] = useState<string | null>(null);
   const [pageHeightPx, setPageHeightPx] = useState<number | null>(null);
   const [pointsPerPixel, setPointsPerPixel] = useState<number | null>(null);
-
-  // page_number in the API is 0-indexed; the viewer's pageNumber is 1-indexed.
-  const currentPageRedactions = redactions.filter((r) => r.page_number === pageNumber - 1);
 
   const handleSelectionMouseUp = (e: React.MouseEvent<HTMLDivElement>) => {
     if (readOnly || !onCreateRedaction || redactionTool !== "select" || pointsPerPixel === null) {
@@ -48,7 +42,8 @@ export function PdfViewer({
     const selection = window.getSelection();
     if (!selection || selection.isCollapsed || selection.rangeCount === 0) return;
     // Ignore selections started/ended outside this page (e.g. dragging from
-    // the thread panel) so we don't redact text on the wrong page.
+    // the thread panel, or across a page boundary) so we don't redact text
+    // on the wrong page.
     if (!e.currentTarget.contains(selection.anchorNode)) return;
 
     const containerRect = e.currentTarget.getBoundingClientRect();
@@ -70,13 +65,69 @@ export function PdfViewer({
   };
 
   return (
+    <Stack align="center" gap={4}>
+      <Text size="xs" c="dimmed">
+        Page {pageNumber}
+      </Text>
+      <div
+        style={{ position: "relative", width: RENDER_WIDTH_PX }}
+        onMouseUp={handleSelectionMouseUp}
+      >
+        <PdfPage
+          pageNumber={pageNumber}
+          width={RENDER_WIDTH_PX}
+          onLoadSuccess={(page) => {
+            const nativeWidth = page.view[2] - page.view[0];
+            const nativeHeight = page.view[3] - page.view[1];
+            setPointsPerPixel(nativeWidth / RENDER_WIDTH_PX);
+            setPageHeightPx(RENDER_WIDTH_PX * (nativeHeight / nativeWidth));
+          }}
+        />
+        {pageHeightPx !== null && pointsPerPixel !== null && (onCreateRedaction || redactions.length > 0) && (
+          <RedactionCanvasOverlay
+            pageWidthPx={RENDER_WIDTH_PX}
+            pageHeightPx={pageHeightPx}
+            scale={pointsPerPixel}
+            redactions={redactions}
+            readOnly={readOnly || !onCreateRedaction}
+            tool={redactionTool}
+            onCreate={(rect) => onCreateRedaction?.(pageNumber - 1, rect)}
+            onDelete={(id) => onDeleteRedaction?.(id)}
+            onUpdateReason={onUpdateRedactionReason}
+          />
+        )}
+      </div>
+    </Stack>
+  );
+}
+
+export function PdfViewer({
+  url,
+  redactions = [],
+  readOnly = true,
+  redactionTool = "draw",
+  onCreateRedaction,
+  onDeleteRedaction,
+  onUpdateRedactionReason,
+}: {
+  url: string;
+  redactions?: Redaction[];
+  readOnly?: boolean;
+  redactionTool?: "draw" | "select";
+  onCreateRedaction?: (pageNumber: number, rect: { x: number; y: number; width: number; height: number }) => void;
+  onDeleteRedaction?: (redactionId: string) => void;
+  onUpdateRedactionReason?: (redactionId: string, reason: string) => void;
+}) {
+  const [numPages, setNumPages] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  return (
     <Stack align="center">
       {error && <Alert color="red">{error}</Alert>}
       <PdfDocument
         file={url}
         onLoadSuccess={({ numPages: n }) => {
           setNumPages(n);
-          setPageNumber(1);
           setError(null);
         }}
         onLoadError={(err) => setError(err.message)}
@@ -86,38 +137,22 @@ export function PdfViewer({
           </Center>
         }
       >
-        <div
-          style={{ position: "relative", width: RENDER_WIDTH_PX }}
-          onMouseUp={handleSelectionMouseUp}
-        >
-          <PdfPage
-            pageNumber={pageNumber}
-            width={RENDER_WIDTH_PX}
-            onLoadSuccess={(page) => {
-              const nativeWidth = page.view[2] - page.view[0];
-              const nativeHeight = page.view[3] - page.view[1];
-              setPointsPerPixel(nativeWidth / RENDER_WIDTH_PX);
-              setPageHeightPx(RENDER_WIDTH_PX * (nativeHeight / nativeWidth));
-            }}
-          />
-          {pageHeightPx !== null && pointsPerPixel !== null && (onCreateRedaction || currentPageRedactions.length > 0) && (
-            <RedactionCanvasOverlay
-              pageWidthPx={RENDER_WIDTH_PX}
-              pageHeightPx={pageHeightPx}
-              scale={pointsPerPixel}
-              redactions={currentPageRedactions}
-              readOnly={readOnly || !onCreateRedaction}
-              tool={redactionTool}
-              onCreate={(rect) => onCreateRedaction?.(pageNumber - 1, rect)}
-              onDelete={(id) => onDeleteRedaction?.(id)}
-              onUpdateReason={onUpdateRedactionReason}
+        <Stack align="center" gap="lg">
+          {Array.from({ length: numPages ?? 0 }, (_, i) => i + 1).map((pageNumber) => (
+            <PdfPageBlock
+              key={pageNumber}
+              pageNumber={pageNumber}
+              // page_number in the API is 0-indexed; pageNumber here is 1-indexed.
+              redactions={redactions.filter((r) => r.page_number === pageNumber - 1)}
+              readOnly={readOnly}
+              redactionTool={redactionTool}
+              onCreateRedaction={onCreateRedaction}
+              onDeleteRedaction={onDeleteRedaction}
+              onUpdateRedactionReason={onUpdateRedactionReason}
             />
-          )}
-        </div>
+          ))}
+        </Stack>
       </PdfDocument>
-      {numPages && numPages > 1 && (
-        <Pagination total={numPages} value={pageNumber} onChange={setPageNumber} />
-      )}
     </Stack>
   );
 }
