@@ -129,6 +129,7 @@ function OllamaSettings({ settings }: { settings: SystemSettings }) {
   const [model, setModel] = useState(settings.ollama_model);
   const [apiKey, setApiKey] = useState("");
   const [concurrency, setConcurrency] = useState<number | string>(settings.ai_review_concurrency);
+  const [logRequests, setLogRequests] = useState(settings.ollama_log_requests);
   const [initialized, setInitialized] = useState(false);
 
   useEffect(() => {
@@ -136,6 +137,7 @@ function OllamaSettings({ settings }: { settings: SystemSettings }) {
     setBaseUrl(settings.ollama_base_url);
     setModel(settings.ollama_model);
     setConcurrency(settings.ai_review_concurrency);
+    setLogRequests(settings.ollama_log_requests);
     setInitialized(true);
   }, [settings, initialized]);
 
@@ -145,6 +147,7 @@ function OllamaSettings({ settings }: { settings: SystemSettings }) {
         ollama_base_url: baseUrl,
         ollama_model: model,
         ai_review_concurrency: typeof concurrency === "number" ? concurrency : 1,
+        ollama_log_requests: logRequests,
         ...(apiKey ? { ollama_api_key: apiKey } : {}),
       }),
     onSuccess: () => {
@@ -184,6 +187,12 @@ function OllamaSettings({ settings }: { settings: SystemSettings }) {
         min={1}
         value={concurrency}
         onChange={setConcurrency}
+      />
+      <Checkbox
+        label="Log Ollama requests"
+        description="Write each request's subject/body preview and the model's response to docker compose logs and ollama.log — useful for diagnosing bad scores, but document content is potentially sensitive, so this is off by default."
+        checked={logRequests}
+        onChange={(e) => setLogRequests(e.currentTarget.checked)}
       />
       <Button
         variant="light"

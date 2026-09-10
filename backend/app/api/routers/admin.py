@@ -85,6 +85,7 @@ def _to_settings_read(row: SystemSettings) -> SystemSettingsRead:
         ollama_model=row.ollama_model,
         ollama_api_key_set=bool(row.ollama_api_key_encrypted),
         ai_review_concurrency=row.ai_review_concurrency,
+        ollama_log_requests=row.ollama_log_requests,
         updated_at=row.updated_at,
         updated_by_id=row.updated_by_id,
     )
@@ -143,6 +144,8 @@ async def update_system_settings(
         if payload.ai_review_concurrency < 1:
             raise HTTPException(status_code=400, detail="ai_review_concurrency must be at least 1")
         row.ai_review_concurrency = payload.ai_review_concurrency
+    if payload.ollama_log_requests is not None:
+        row.ollama_log_requests = payload.ollama_log_requests
 
     row.updated_by_id = current.id
     await db.commit()

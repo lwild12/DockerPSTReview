@@ -165,10 +165,27 @@ async def test_long_document_body_is_truncated_in_the_prompt():
     assert len(seen_request["body"]["prompt"]) < 15000
 
 
-async def test_scoring_logs_a_preview_of_what_was_sent_and_received(caplog):
+async def test_scoring_does_not_log_by_default(caplog):
+    # Document content is potentially privileged/sensitive -- nothing about
+    # a scoring request/response should be logged anywhere unless an admin
+    # has explicitly opted in via the "Log Ollama requests" setting.
+    def handler(request):
+        return httpx.Response(
+            200, json={"response": json.dumps({"score": 42, "rationale": "Somewhat relevant."})}
+        )
+
+    with caplog.at_level("DEBUG", logger="app.services.ollama_client"):
+        async with _client_for(handler) as client:
+            await _score(client, body="Here is the Q3 budget breakdown.")
+
+    assert caplog.messages == []
+
+
+async def test_scoring_logs_a_preview_of_what_was_sent_and_received_when_enabled(caplog):
     # Diagnostic aid: an admin unsure whether real document content is
     # reaching the model (the original "subject and sender only" bug) can
-    # check `docker compose logs worker` rather than needing a debugger.
+    # check `docker compose logs worker`/ollama.log rather than needing a
+    # debugger -- once they've opted in via log_requests.
     def handler(request):
         return httpx.Response(
             200, json={"response": json.dumps({"score": 42, "rationale": "Somewhat relevant."})}
@@ -176,11 +193,30 @@ async def test_scoring_logs_a_preview_of_what_was_sent_and_received(caplog):
 
     with caplog.at_level("INFO", logger="app.services.ollama_client"):
         async with _client_for(handler) as client:
-            await _score(client, body="Here is the Q3 budget breakdown.")
+            await _score(client, body="Here is the Q3 budget breakdown.", log_requests=True)
 
     log_text = "\n".join(caplog.messages)
     assert "Here is the Q3 budget breakdown." in log_text
     assert "score=42" in log_text
+
+
+async def test_scoring_log_preview_marks_truncation_instead_of_stopping_silently(caplog):
+    # Reported as "body is being truncated": the preview snippet in the log
+    # line used to cut off at exactly 200 chars with no indication it was
+    # only a preview, mid-word and all -- read as if the model's actual
+    # input had been cut short, when the full (correctly reported) length
+    # was always what's actually sent. The preview should say so.
+    def handler(request):
+        return httpx.Response(200, json={"response": json.dumps({"score": 10, "rationale": "x"})})
+
+    long_body = "word " * 100  # well over the 200-char preview limit
+    with caplog.at_level("INFO", logger="app.services.ollama_client"):
+        async with _client_for(handler) as client:
+            await _score(client, body=long_body, log_requests=True)
+
+    log_text = "\n".join(caplog.messages)
+    assert "chars total" in log_text
+    assert f"body is {len(long_body)} chars" in log_text
 
 
 def test_logger_fires_info_even_when_root_logger_is_warning():

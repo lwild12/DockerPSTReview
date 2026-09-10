@@ -35,6 +35,10 @@ class SystemSettings(UUIDPKMixin, Base):
     # of the external Ollama server's capacity, which the same admin
     # configuring the endpoint is best placed to judge and tune at runtime.
     ai_review_concurrency: Mapped[int] = mapped_column(Integer, default=1)
+    # Off by default -- document content is potentially privileged/sensitive,
+    # so nothing about an AI review request/response is logged (console or
+    # ollama.log) unless an admin explicitly opts in here.
+    ollama_log_requests: Mapped[bool] = mapped_column(Boolean, default=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
