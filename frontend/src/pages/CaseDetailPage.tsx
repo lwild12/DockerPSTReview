@@ -19,12 +19,13 @@ import {
 import { useDisclosure } from "@mantine/hooks";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent, type ReactNode } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { getCaseAnalytics, recomputeCaseAnalytics } from "../api/analytics";
 import {
   addMember,
   createCustodian,
+  deleteCase,
   getCase,
   getCaseStats,
   listCustodians,
@@ -73,9 +74,12 @@ function StepCard({
 
 export function CaseDetailPage() {
   const { caseId = "" } = useParams<{ caseId: string }>();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const enabled = caseId !== "";
 
+  const [deleteModal, { open: openDeleteModal, close: closeDeleteModal }] = useDisclosure(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const [memberModal, { open: openMemberModal, close: closeMemberModal }] = useDisclosure(false);
   const [custodianModal, { open: openCustodianModal, close: closeCustodianModal }] =
     useDisclosure(false);
@@ -234,6 +238,14 @@ export function CaseDetailPage() {
     },
   });
 
+  const deleteCaseMutation = useMutation({
+    mutationFn: () => deleteCase(caseId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["cases"] });
+      navigate("/cases");
+    },
+  });
+
   return (
     <Container size="md" py="xl">
       <Group justify="space-between" mb="xs">
@@ -243,6 +255,11 @@ export function CaseDetailPage() {
           <Button size="xs" variant="subtle" onClick={openMemberModal}>
             Members
           </Button>
+          {isAdmin && (
+            <Button size="xs" variant="subtle" color="red" onClick={openDeleteModal}>
+              Delete case
+            </Button>
+          )}
         </Group>
       </Group>
       <Text c="dimmed" mb="xl">
@@ -634,6 +651,40 @@ export function CaseDetailPage() {
             </Button>
           </Stack>
         </form>
+      </Modal>
+
+      <Modal
+        opened={deleteModal}
+        onClose={() => {
+          setDeleteConfirmText("");
+          closeDeleteModal();
+        }}
+        title="Delete case"
+      >
+        <Stack>
+          <Text size="sm">
+            This permanently deletes <strong>{caseData?.name}</strong> and everything in it —
+            every imported document, review set, tag, and coding value. This can't be undone.
+          </Text>
+          <TextInput
+            label={`Type "${caseData?.name}" to confirm`}
+            value={deleteConfirmText}
+            onChange={(e) => setDeleteConfirmText(e.currentTarget.value)}
+          />
+          {deleteCaseMutation.isError && (
+            <Text c="red" size="sm">
+              Couldn't delete this case — try again.
+            </Text>
+          )}
+          <Button
+            color="red"
+            disabled={deleteConfirmText !== caseData?.name}
+            loading={deleteCaseMutation.isPending}
+            onClick={() => deleteCaseMutation.mutate()}
+          >
+            Delete case permanently
+          </Button>
+        </Stack>
       </Modal>
     </Container>
   );

@@ -1,3 +1,10 @@
+import uuid
+
+from sqlalchemy import select
+
+from app.models.case import Case, Custodian
+from app.models.document import DocType, Document
+from app.models.importjob import ImportStatus, PSTImportJob
 from tests.conftest import register_and_login
 
 
@@ -103,6 +110,87 @@ async def test_case_stats_reflects_custodians_and_review_sets(client):
     assert body["review_sets_count"] == 1
     assert body["documents_total"] == 0
     assert body["import_jobs_total"] == 0
+
+
+async def test_delete_case_cascades_through_custodians_import_jobs_and_documents(
+    client, db_session
+):
+    admin = await register_and_login(client, "admin7@example.com")
+    resp = await client.post("/api/cases", json={"name": "Case F"})
+    case_id = uuid.UUID(resp.json()["id"])
+
+    custodian = Custodian(id=uuid.uuid4(), case_id=case_id, name="Jane Doe")
+    db_session.add(custodian)
+    await db_session.flush()
+
+    import_job = PSTImportJob(
+        id=uuid.uuid4(),
+        case_id=case_id,
+        custodian_id=custodian.id,
+        uploaded_filename="mailbox.pst",
+        storage_path="/tmp/mailbox.pst",
+        status=ImportStatus.completed,
+        created_by_id=uuid.UUID(admin["id"]),
+    )
+    db_session.add(import_job)
+    await db_session.flush()
+
+    document = Document(
+        id=uuid.uuid4(),
+        case_id=case_id,
+        import_job_id=import_job.id,
+        custodian_id=custodian.id,
+        doc_type=DocType.email,
+        subject="Test",
+        content_hash=str(uuid.uuid4()),
+    )
+    db_session.add(document)
+    await db_session.commit()
+
+    resp = await client.delete(f"/api/cases/{case_id}")
+    assert resp.status_code == 204
+
+    assert (await db_session.get(Case, case_id)) is None
+    assert (await db_session.execute(select(Custodian))).scalar_one_or_none() is None
+    assert (await db_session.execute(select(PSTImportJob))).scalar_one_or_none() is None
+    assert (await db_session.execute(select(Document))).scalar_one_or_none() is None
+
+    listed = await client.get("/api/cases")
+    assert listed.json() == []
+
+
+async def test_delete_case_requires_admin_role(client):
+    await register_and_login(client, "admin8@example.com")
+    resp = await client.post("/api/cases", json={"name": "Case G"})
+    case_id = resp.json()["id"]
+
+    from httpx import ASGITransport, AsyncClient
+
+    from app.main import app
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as reviewer_client:
+        await register_and_login(reviewer_client, "reviewer8@example.com")
+        await client.post(
+            f"/api/cases/{case_id}/members",
+            json={"email": "reviewer8@example.com", "role": "reviewer"},
+        )
+        forbidden = await reviewer_client.delete(f"/api/cases/{case_id}")
+        assert forbidden.status_code == 403
+
+    still_there = await client.get(f"/api/cases/{case_id}")
+    assert still_there.status_code == 200
+
+
+async def test_delete_case_with_no_membership_returns_403(client):
+    # Not a member of this (nonexistent, but that's beside the point) case
+    # at all -- the permission check runs before the handler ever looks up
+    # whether the case exists, so this is a 403 rather than a 404 (same
+    # posture as get_case for a non-member, avoiding a case-existence
+    # oracle for outsiders).
+    await register_and_login(client, "admin9@example.com")
+    resp = await client.delete(f"/api/cases/{uuid.uuid4()}")
+    assert resp.status_code == 403
 
 
 async def test_custodian_crud_and_role_boundary(client):

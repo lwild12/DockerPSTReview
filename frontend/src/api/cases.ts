@@ -54,6 +54,10 @@ export async function getCase(caseId: string): Promise<Case> {
   return apiFetch<Case>(`/cases/${caseId}`);
 }
 
+export async function deleteCase(caseId: string): Promise<void> {
+  return apiFetch<void>(`/cases/${caseId}`, { method: "DELETE" });
+}
+
 export async function listMembers(caseId: string): Promise<CaseMember[]> {
   return apiFetch<CaseMember[]>(`/cases/${caseId}/members`);
 }
