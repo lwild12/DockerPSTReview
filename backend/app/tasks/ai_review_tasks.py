@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import html
 import logging
+import re
 import uuid
 from datetime import UTC, datetime
 
+import nh3
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
@@ -20,6 +23,38 @@ from app.services.review_candidates import get_review_candidate_document_ids
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
+
+_BLOCK_BREAK_RE = re.compile(r"(?i)</(p|div|li|tr|h[1-6]|blockquote)>|<br\s*/?>")
+
+
+def _plain_text_from_html(html_body: str) -> str:
+    """Rough plain-text extraction for feeding an HTML-only email body to
+    the LLM -- not for display. Many corporate/templated emails have no
+    text/plain alternative part at all, only HTML, so body_text is empty
+    for them even though real content exists in body_html. A newline is
+    inserted where block-level tags close, before stripping every
+    remaining tag (nh3 drops <script>/<style> content along with their
+    tags, matching how a browser would render it) -- otherwise adjacent
+    paragraphs run together with no separation at all."""
+    with_breaks = _BLOCK_BREAK_RE.sub("\n", html_body)
+    return html.unescape(nh3.clean(with_breaks, tags=set()))
+
+
+def _text_for_scoring(document: Document) -> str:
+    """Best available text content to send the model. body_text when
+    present; otherwise a plain-text extraction from body_html for
+    HTML-only emails. ocr_text (attachments OCR'd because their PDF had
+    no extractable text layer) is appended too rather than substituted,
+    since it's a genuinely separate source that's never wrong to include
+    when present."""
+    parts = []
+    if document.body_text:
+        parts.append(document.body_text)
+    elif document.body_html:
+        parts.append(_plain_text_from_html(document.body_html))
+    if document.ocr_text:
+        parts.append(document.ocr_text)
+    return "\n\n".join(parts)
 
 
 async def _get_system_settings(db: AsyncSession) -> SystemSettings:
@@ -66,7 +101,7 @@ async def _score_one_document(
             criteria=criteria,
             subject=document.subject,
             sender=document.sender,
-            body=document.body_text or "",
+            body=_text_for_scoring(document),
         )
     except OllamaError as exc:
         relevance.status = AiRelevanceStatus.failed

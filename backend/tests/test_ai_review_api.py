@@ -109,6 +109,60 @@ async def test_non_member_cannot_view_summary(client):
     assert resp.status_code == 403
 
 
+async def test_run_for_single_document_requires_ollama_to_be_configured(client, db_session):
+    case_id = await _setup_case(client)
+    document = await _seed_document(db_session, case_id)
+
+    resp = await client.post(f"/api/cases/{case_id}/ai-review/documents/{document.id}/run")
+    assert resp.status_code == 400
+    assert "not configured" in resp.json()["detail"]
+
+
+async def test_run_for_single_document_scores_immediately(client, db_session, monkeypatch):
+    case_id = await _setup_case(client)
+    document = await _seed_document(db_session, case_id)
+    await client.patch(f"/api/cases/{case_id}/ai-review/criteria", json={"criteria": "Q3 budget"})
+    db_session.add(
+        SystemSettings(ollama_base_url="http://ollama.local:11434", ollama_model="llama3.1")
+    )
+    await db_session.commit()
+
+    from app.services.ollama_client import RelevanceResult
+    from app.tasks import ai_review_tasks
+
+    async def _fake_score(**kwargs):
+        return RelevanceResult(score=63, rationale="Discusses the Q3 numbers directly.")
+
+    monkeypatch.setattr(ai_review_tasks, "score_document_relevance", _fake_score)
+
+    resp = await client.post(f"/api/cases/{case_id}/ai-review/documents/{document.id}/run")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["status"] == "completed"
+    assert body["score"] == 63
+    assert body["rationale"] == "Discusses the Q3 numbers directly."
+    assert body["criteria_snapshot"] == "Q3 budget"
+
+    # doesn't touch the case-level run timestamps -- this is a single-
+    # document action, not a case run
+    case_resp = await client.get(f"/api/cases/{case_id}/ai-review")
+    assert case_resp.json()["last_run_started_at"] is None
+
+
+async def test_run_for_single_document_404s_for_document_in_another_case(client, db_session):
+    case_id = await _setup_case(client)
+    other_case_id = await client.post("/api/cases", json={"name": "Case B"})
+    other_case_id = other_case_id.json()["id"]
+    other_document = await _seed_document(db_session, other_case_id)
+    db_session.add(
+        SystemSettings(ollama_base_url="http://ollama.local:11434", ollama_model="llama3.1")
+    )
+    await db_session.commit()
+
+    resp = await client.post(f"/api/cases/{case_id}/ai-review/documents/{other_document.id}/run")
+    assert resp.status_code == 404
+
+
 async def test_reviewer_cannot_trigger_run(client):
     case_id = await _setup_case(client)
 
