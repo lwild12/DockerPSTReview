@@ -1,19 +1,25 @@
+import logging
+import shutil
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import require_case_admin, require_case_member
 from app.auth.users import current_active_user
 from app.db import get_db
 from app.models.case import Case, CaseMembership, CaseRole, Custodian
-from app.models.document import DedupStatus, Document
+from app.models.document import DedupStatus, Document, Thread
+from app.models.export import ExportJob
 from app.models.importjob import PSTImportJob
 from app.models.review import ReviewSet, ReviewSetDocument
 from app.models.user import User
 from app.schemas.case import CaseCreate, CaseMemberCreate, CaseMemberRead, CaseRead, CaseStats
 from app.services.audit import record_audit
+from app.services.storage import case_root
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/cases", tags=["cases"])
 
@@ -68,6 +74,47 @@ async def get_case(
     item = CaseRead.model_validate(case)
     item.my_role = membership.role
     return item
+
+
+@router.delete("/{case_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_case(
+    case_id: uuid.UUID,
+    _membership: CaseMembership = Depends(require_case_admin),
+    user: User = Depends(current_active_user),
+    db: AsyncSession = Depends(get_db),
+):
+    case = await db.get(Case, case_id)
+    if case is None:
+        raise HTTPException(status_code=404, detail="Case not found")
+    # The case's own audit log is deleted along with it (ON DELETE CASCADE),
+    # so this irreversible action is recorded in the application log instead,
+    # which survives it.
+    logger.warning(
+        "Deleting case %s (%r) and all its data -- requested by user %s",
+        case_id,
+        case.name,
+        user.id,
+    )
+
+    # Several case-scoped tables cross-reference each other without their
+    # own ON DELETE CASCADE (documents<->threads, self-referencing
+    # documents, custodians<->import jobs, export_document_bates-
+    # >documents) -- left to the cases.id cascade alone, those edges can
+    # block the very deletes the cascade triggers. Clear/delete them
+    # explicitly first, in dependency-safe order, then let the case's own
+    # cascade handle everything with a direct link to cases.id.
+    await db.execute(delete(ExportJob).where(ExportJob.case_id == case_id))
+    await db.execute(update(Thread).where(Thread.case_id == case_id).values(root_document_id=None))
+    await db.execute(
+        update(Document)
+        .where(Document.case_id == case_id)
+        .values(parent_document_id=None, duplicate_of_id=None)
+    )
+    await db.execute(delete(Document).where(Document.case_id == case_id))
+    await db.execute(delete(PSTImportJob).where(PSTImportJob.case_id == case_id))
+    await db.delete(case)
+    await db.commit()
+    shutil.rmtree(case_root(case_id), ignore_errors=True)
 
 
 @router.get("/{case_id}/stats", response_model=CaseStats)
