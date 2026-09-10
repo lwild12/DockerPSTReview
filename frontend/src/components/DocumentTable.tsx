@@ -56,7 +56,10 @@ export function DocumentTable({
         {rows.map(({ item: doc, isChild, childCount }) => (
           <Table.Tr
             key={doc.id}
-            style={{ cursor: "pointer", backgroundColor: isChild ? "var(--mantine-color-gray-0)" : undefined }}
+            style={{
+              cursor: "pointer",
+              backgroundColor: isChild ? "var(--mantine-color-default-hover)" : undefined,
+            }}
           >
             <Table.Td>
               <Checkbox

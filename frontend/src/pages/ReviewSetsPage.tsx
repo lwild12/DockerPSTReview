@@ -314,7 +314,10 @@ export function ReviewSetDetailPage() {
           </Table.Thead>
           <Table.Tbody>
             {familyRows.map(({ item: d, isChild, childCount }) => (
-              <Table.Tr key={d.id} style={{ backgroundColor: isChild ? "var(--mantine-color-gray-0)" : undefined }}>
+              <Table.Tr
+                key={d.id}
+                style={{ backgroundColor: isChild ? "var(--mantine-color-default-hover)" : undefined }}
+              >
                 <Table.Td>
                   <Checkbox
                     checked={selectedIds.has(d.document_id)}
