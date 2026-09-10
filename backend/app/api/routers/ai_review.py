@@ -146,6 +146,7 @@ async def run_ai_review_for_document(
         model=system_settings.ollama_model,
         api_key=api_key,
         db=db,
+        log_requests=system_settings.ollama_log_requests,
     )
     await db.refresh(document, attribute_names=["ai_relevance"])
     return DocumentAiRelevanceRead.model_validate(document.ai_relevance)

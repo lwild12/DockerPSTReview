@@ -85,6 +85,7 @@ async def _score_one_document(
     model: str,
     api_key: str,
     db: AsyncSession,
+    log_requests: bool = False,
 ) -> None:
     document = await db.get(Document, document_id)
     if document is None:
@@ -110,6 +111,7 @@ async def _score_one_document(
             subject=document.subject,
             sender=document.sender,
             body=_text_for_scoring(document),
+            log_requests=log_requests,
         )
     except OllamaError as exc:
         relevance.status = AiRelevanceStatus.failed
@@ -184,6 +186,7 @@ async def run_ai_review(case_id: uuid.UUID, db: AsyncSession, *, rescore_all: bo
                         model=system_settings.ollama_model,
                         api_key=api_key,
                         db=session,
+                        log_requests=system_settings.ollama_log_requests,
                     )
 
             # return_exceptions=True: _score_one_document already catches its

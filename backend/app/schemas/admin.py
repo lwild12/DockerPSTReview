@@ -33,6 +33,7 @@ class SystemSettingsRead(BaseModel):
     ollama_model: str
     ollama_api_key_set: bool
     ai_review_concurrency: int
+    ollama_log_requests: bool
     updated_at: datetime
     updated_by_id: uuid.UUID | None
 
@@ -52,3 +53,4 @@ class SystemSettingsUpdate(BaseModel):
     # Write-only, same convention as oidc_client_secret above.
     ollama_api_key: str | None = None
     ai_review_concurrency: int | None = None
+    ollama_log_requests: bool | None = None

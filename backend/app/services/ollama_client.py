@@ -94,6 +94,17 @@ class RelevanceResult:
     rationale: str
 
 
+def _log_preview(text: str, limit: int = 200) -> str:
+    """A bounded snippet for the INFO-level request log below. Silently
+    stopping mid-word at the limit (the previous behavior) read as if the
+    model's actual input were being truncated rather than just this one
+    log line -- the full body length is logged separately regardless, and
+    the complete text is always what's actually sent to Ollama."""
+    if len(text) <= limit:
+        return text
+    return f"{text[:limit]}... [truncated for the log, {len(text)} chars total]"
+
+
 def _build_user_prompt(criteria: str, subject: str, sender: str, body: str) -> str:
     truncated_body = body[:_MAX_DOCUMENT_CHARS]
     return (
@@ -142,11 +153,16 @@ async def score_document_relevance(
     body: str,
     timeout: float = _DEFAULT_TIMEOUT_SECONDS,
     client: httpx.AsyncClient | None = None,
+    log_requests: bool = False,
 ) -> RelevanceResult:
     """Score one document's relevance against `criteria` via an
     Ollama-compatible `/api/generate` endpoint. `client` is injectable for
     tests (e.g. one built on `httpx.MockTransport`); by default a fresh
-    client is opened and closed per call."""
+    client is opened and closed per call. `log_requests` (off by default --
+    an admin opts in via the "Log Ollama requests" setting) controls the
+    request/response preview logging below; document content is
+    potentially sensitive, so nothing is logged unless explicitly asked
+    for."""
     if not base_url or not model:
         raise OllamaError(
             "Ollama is not configured -- set the endpoint URL and model in Admin settings"
@@ -166,15 +182,17 @@ async def score_document_relevance(
     # content is actually reaching the model (the original bug this is a
     # response to) without routinely dumping full, potentially sensitive
     # document bodies into the worker's default log level. DEBUG carries
-    # the whole prompt for when that's not enough.
-    logger.info(
-        "AI review: scoring subject=%r against model=%s -- body is %d chars, starts: %r",
-        subject[:200],
-        model,
-        len(body),
-        body[:200],
-    )
-    logger.debug("AI review: full prompt sent to Ollama:\n%s", user_prompt)
+    # the whole prompt for when that's not enough. Both gated on
+    # log_requests -- off unless an admin has explicitly enabled it.
+    if log_requests:
+        logger.info(
+            "AI review: scoring subject=%r against model=%s -- body is %d chars, starts: %r",
+            _log_preview(subject),
+            model,
+            len(body),
+            _log_preview(body),
+        )
+        logger.debug("AI review: full prompt sent to Ollama:\n%s", user_prompt)
 
     owns_client = client is None
     if owns_client:
@@ -201,9 +219,11 @@ async def score_document_relevance(
         if not isinstance(response_text, str):
             raise OllamaError(f"Ollama response missing 'response' field: {response_body!r:.500}")
 
-        logger.info("AI review: raw model response: %r", response_text[:500])
+        if log_requests:
+            logger.info("AI review: raw model response: %r", _log_preview(response_text, limit=500))
         result = _parse_relevance_result(response_text)
-        logger.info("AI review: parsed score=%d rationale=%r", result.score, result.rationale)
+        if log_requests:
+            logger.info("AI review: parsed score=%d rationale=%r", result.score, result.rationale)
         return result
     finally:
         if owns_client:

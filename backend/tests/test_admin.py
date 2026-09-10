@@ -114,6 +114,9 @@ async def test_get_and_update_ollama_settings(client, db_session, monkeypatch):
     assert body["ollama_base_url"] == ""
     assert body["ollama_api_key_set"] is False
     assert body["ai_review_concurrency"] == 1
+    # Document content is potentially privileged/sensitive -- request/response
+    # logging must default off, not on.
+    assert body["ollama_log_requests"] is False
 
     updated = await client.patch(
         "/api/admin/settings",
@@ -122,6 +125,7 @@ async def test_get_and_update_ollama_settings(client, db_session, monkeypatch):
             "ollama_model": "llama3.1",
             "ollama_api_key": "secret-token",
             "ai_review_concurrency": 3,
+            "ollama_log_requests": True,
         },
     )
     assert updated.status_code == 200
@@ -132,6 +136,7 @@ async def test_get_and_update_ollama_settings(client, db_session, monkeypatch):
     assert "ollama_api_key" not in body
     assert body["ollama_api_key_set"] is True
     assert body["ai_review_concurrency"] == 3
+    assert body["ollama_log_requests"] is True
 
     cleared = await client.patch("/api/admin/settings", json={"ollama_api_key": ""})
     assert cleared.json()["ollama_api_key_set"] is False

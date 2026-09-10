@@ -22,6 +22,7 @@ export interface SystemSettings {
   ollama_model: string;
   ollama_api_key_set: boolean;
   ai_review_concurrency: number;
+  ollama_log_requests: boolean;
   updated_at: string;
   updated_by_id: string | null;
 }
@@ -39,6 +40,7 @@ export interface SystemSettingsUpdate {
   ollama_model?: string;
   ollama_api_key?: string;
   ai_review_concurrency?: number;
+  ollama_log_requests?: boolean;
 }
 
 export async function listAdminUsers(): Promise<AdminUser[]> {
