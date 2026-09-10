@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import subprocess
 import uuid
 from dataclasses import dataclass
@@ -409,13 +410,24 @@ def _pypff_attachments(
 # RTFDE's grammar-based parser is roughly linear in RTF size but with a very
 # high constant factor -- a 1MB body (easily reached by one embedded
 # signature image or screenshot, common in real corporate mail) measured at
-# ~13s to de-encapsulate. A large RTF body is overwhelmingly a large
-# embedded picture, not large text, so past this size the picture (which
-# isn't recoverable as text/HTML anyway) is skipped rather than letting one
-# message stall the whole import -- extract_pst processes the entire PST
-# synchronously in one thread, so a single slow message blocks every
-# message after it.
+# ~13s to de-encapsulate. Past this size, parsing is skipped rather than
+# letting one message stall the whole import -- extract_pst processes the
+# entire PST synchronously in one thread, so a single slow message blocks
+# every message after it.
 _MAX_RTF_DEENCAPSULATE_BYTES = 50_000
+
+# What actually makes a message's RTF encoding large is almost always an
+# embedded picture or OLE object: RTF stores that binary data as a long run
+# of hex digits (2 hex chars per byte) inside a \pict/\objdata group. That
+# data isn't recoverable as text/HTML anyway and dominates the parse time,
+# but naively skipping de-encapsulation whenever the *raw* body exceeds the
+# cap above threw away the message's real text too -- a small note with one
+# signature logo attached inline easily has more picture bytes than text.
+# Stripping these hex runs first keeps parsing fast without losing the text
+# that's actually being asked for. RTF control words/text never contain
+# 100+ consecutive hex digits, so this can't mistake real content for a
+# picture.
+_RTF_HEX_BLOB_RE = re.compile(rb"(?:[0-9A-Fa-f]{2}[ \t\r\n]*){100,}")
 
 
 def _rtf_deencapsulated_body(message) -> tuple[str, str]:
@@ -434,9 +446,12 @@ def _rtf_deencapsulated_body(message) -> tuple[str, str]:
         raw = raw.encode("utf-8", errors="replace")
     elif not isinstance(raw, bytes):
         return "", ""
+    raw = _RTF_HEX_BLOB_RE.sub(b"", raw)
     if len(raw) > _MAX_RTF_DEENCAPSULATE_BYTES:
         logger.info(
-            "RTF body too large to de-encapsulate (%d bytes) -- leaving body empty", len(raw)
+            "RTF body too large to de-encapsulate (%d bytes after stripping embedded "
+            "pictures/objects) -- leaving body empty",
+            len(raw),
         )
         return "", ""
     try:
