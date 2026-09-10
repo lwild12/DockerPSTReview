@@ -32,6 +32,7 @@ from email.utils import format_datetime
 from pathlib import Path
 
 import vobject
+from RTFDE.deencapsulate import DeEncapsulator
 
 from app.services.email_parsing import parse_eml_bytes
 
@@ -334,10 +335,38 @@ def _pypff_attachments(message) -> list[tuple[str, str, bytes]]:
     return attachments
 
 
+def _rtf_deencapsulated_body(message) -> tuple[str, str]:
+    """Recover (plain, html) from an RTF-only body via RTF de-encapsulation
+    (MS-OXRTFCP). Outlook commonly stores a message's real plain-text/HTML
+    content wrapped in RTF rather than as separate PR_BODY/PR_HTML
+    properties, which get_plain_text_body()/get_html_body() don't see --
+    leaving the body empty while headers (a separate property) still show."""
+    try:
+        raw = message.get_rtf_body()
+    except Exception:
+        return "", ""
+    if not raw:
+        return "", ""
+    if isinstance(raw, str):
+        raw = raw.encode("utf-8", errors="replace")
+    elif not isinstance(raw, bytes):
+        return "", ""
+    try:
+        de = DeEncapsulator(raw)
+        de.deencapsulate()
+    except Exception:
+        logger.warning("Failed to de-encapsulate RTF body, leaving body empty", exc_info=True)
+        return "", ""
+    content = _decode_body(de.content)
+    return (content, "") if de.content_type == "text" else ("", content)
+
+
 def _stage_pypff_email(message, staging_dir: str) -> tuple[str, Path]:
     headers = _headers_from_message(message)
     plain = _decode_body(message.get_plain_text_body())
     html = _decode_body(message.get_html_body())
+    if not plain and not html:
+        plain, html = _rtf_deencapsulated_body(message)
     attachments = _pypff_attachments(message)
     eml_bytes = build_eml_bytes(headers, plain, html, attachments)
 
