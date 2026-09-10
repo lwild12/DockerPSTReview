@@ -316,6 +316,24 @@ def test_pypff_attachments_separates_hidden_inline_images_from_real_attachments(
     assert [(cid, mime) for cid, mime, _data in inline_images] == [("sig123@test", "image/png")]
 
 
+def test_pypff_attachments_treats_content_id_as_inline_even_without_the_hidden_flag():
+    # Outlook sets PR_ATTACHMENT_HIDDEN reliably, but mail that didn't
+    # originate in Outlook (delivered via SMTP/Exchange transport with a
+    # standard multipart/related HTML body, say) commonly carries a valid
+    # Content-ID for an inline image without ever getting that Outlook-
+    # specific flag set -- Content-ID alone has to be enough.
+    inline_no_hidden_flag = _FakeAttachment(
+        b"PNGDATA", mime_type="image/png", hidden=False, content_id="logo@nonoutlook"
+    )
+
+    attachments, inline_images = _pypff_attachments(
+        _FakeMessage(attachments=[inline_no_hidden_flag])
+    )
+
+    assert attachments == []
+    assert [(cid, mime) for cid, mime, _data in inline_images] == [("logo@nonoutlook", "image/png")]
+
+
 def test_stage_pypff_email_embeds_inline_image_instead_of_listing_it_as_an_attachment(tmp_path):
     real = _FakeAttachment(b"%PDF-fake", filename="report.pdf", mime_type="application/pdf")
     signature_logo = _FakeAttachment(

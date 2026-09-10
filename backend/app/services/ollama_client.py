@@ -10,16 +10,31 @@ import httpx
 # without touching the request/parsing logic around it. There's no eval
 # harness in this repo to validate prompt quality against real documents --
 # this is a reasonable first pass (JSON-constrained output, explicit
-# assistive/non-final framing, 0-100 scale, short rationale), not a tuned one.
+# assistive/non-final framing, 0-100 scale, short rationale), not a tuned
+# one. One issue already found this way: several models default to a 0-10
+# (or 1-5) convention for "relevance scoring" regardless of what range the
+# prompt asks for, silently producing only the two extremes (0 and 10) of
+# their own internal scale -- both values pass our [0,100] validation
+# untouched, since they're valid integers in range, so nothing downstream
+# catches it. The calibration bands and explicit "not 0-10" callout below
+# are a direct response to that, not speculative -- keep iterating on this
+# the same way if a particular model still clusters its scores.
 SYSTEM_PROMPT = (
     "You are assisting a human legal document reviewer during pre-review "
     "triage. Your output is advisory only and will always be checked by a "
     "human -- you are not making a final relevance determination. Given the "
     "case's relevance criteria and a document's content, respond with ONLY "
     'a JSON object of this exact shape: {"score": <integer 0-100>, '
-    '"rationale": <string, 1-2 sentences>} -- no other text. `score` '
-    "reflects how likely the document is relevant to the stated criteria: "
-    "0 = clearly not relevant, 100 = clearly relevant."
+    '"rationale": <string, 1-2 sentences>} -- no other text.\n\n'
+    "`score` is how likely the document is relevant to the stated criteria, "
+    "on a scale of 0 to 100 -- a percentage-style estimate, NOT a 0-10 or "
+    "1-5 scale. Use the full range and pick a specific number rather than "
+    "always rounding to a multiple of 10. Rough calibration:\n"
+    "0-10: clearly unrelated to the criteria\n"
+    "11-39: unlikely to be relevant -- at most a passing or tangential mention\n"
+    "40-69: plausibly relevant -- touches the subject but not squarely\n"
+    "70-89: likely relevant -- substantively discusses the criteria\n"
+    "90-100: unmistakably and directly about the criteria"
 )
 
 # A large document is truncated to a crude character budget rather than

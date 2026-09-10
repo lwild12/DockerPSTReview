@@ -367,14 +367,20 @@ def _pypff_attachments(
 ) -> tuple[list[tuple[str, str, bytes]], list[tuple[str, str, bytes]]]:
     """Split a message's attachments into (real attachments, inline images).
 
-    Outlook marks an attachment PR_ATTACHMENT_HIDDEN when it's inline body
-    content (a signature logo, an embedded screenshot) rather than something
-    the user attached -- those go out as inline images (keyed by their
-    PR_ATTACH_CONTENT_ID, matching the `cid:` references in the HTML body)
-    instead of real, separately-reviewable attachments. A hidden attachment
-    with no content ID can't be tied to any `cid:` reference in the body, so
-    it's dropped rather than either shown as an attachment or embedded
-    nowhere.
+    An attachment is treated as an inline image -- kept out of the regular
+    attachment list and instead embedded into the HTML body via its
+    PR_ATTACH_CONTENT_ID (matching the `cid:` reference that uses it) -- if
+    it carries a Content-ID at all. That alone is a reliable signal: a
+    Content-ID exists specifically so something else can reference the part,
+    which a real user-facing attachment normally doesn't have. Outlook also
+    marks these PR_ATTACHMENT_HIDDEN, but that flag is Outlook's own
+    convention and isn't set reliably on messages that didn't originate in
+    Outlook (mail delivered via SMTP/Exchange transport with a standard
+    multipart/related HTML body, for instance) -- keying off Content-ID
+    first, and falling back to the hidden flag only when there's no
+    Content-ID to key off of, catches those too. A hidden attachment with no
+    content ID can't be tied to any `cid:` reference in the body, so it's
+    dropped rather than either shown as an attachment or embedded nowhere.
     """
     attachments: list[tuple[str, str, bytes]] = []
     inline_images: list[tuple[str, str, bytes]] = []
@@ -387,10 +393,11 @@ def _pypff_attachments(
             attachment = message.get_attachment(i)
             data = attachment.read_buffer(attachment.get_size())
             mime_type = _get_attachment_mime_type(attachment) or "application/octet-stream"
+            content_id = _get_attachment_content_id(attachment)
+            if content_id:
+                inline_images.append((content_id, mime_type, data))
+                continue
             if _is_attachment_hidden(attachment):
-                content_id = _get_attachment_content_id(attachment)
-                if content_id:
-                    inline_images.append((content_id, mime_type, data))
                 continue
             filename = _get_attachment_filename(attachment) or f"attachment-{i}"
             attachments.append((filename, mime_type, data))

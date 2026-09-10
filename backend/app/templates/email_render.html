@@ -17,6 +17,9 @@
     {% if recipients_cc %}
     <div class="header-row"><span class="header-label">Cc:</span> {{ recipients_cc|join(', ') }}</div>
     {% endif %}
+    {% if recipients_bcc %}
+    <div class="header-row"><span class="header-label">Bcc:</span> {{ recipients_bcc|join(', ') }}</div>
+    {% endif %}
     <div class="header-row"><span class="header-label">Sent:</span> {{ sent_at }}</div>
     <div class="header-row"><span class="header-label">Subject:</span> {{ subject }}</div>
   </div>
