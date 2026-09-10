@@ -9,6 +9,17 @@ from logging import FileHandler
 import httpx
 
 logger = logging.getLogger(__name__)
+# Set explicitly rather than relying on the ambient root level: uvicorn's
+# default logging setup (used by the `backend` container) leaves an
+# unconfigured logger like this one at the root's default WARNING, which
+# silently drops every INFO call below without raising anything -- the
+# previous version of this file had none of its scoring logs show up
+# anywhere when triggered via the backend (the per-document re-run
+# button), console or file, even though the exact same code worked from
+# the `worker` container (Celery's --loglevel=INFO happens to set the
+# root logger to INFO, masking the bug there). Confirmed via a real
+# uvicorn Config().configure_logging() call.
+logger.setLevel(logging.INFO)
 
 # `docker compose logs` has proven awkward for admins to actually find these
 # lines in (they're interleaved with everything else the backend/worker
