@@ -2,6 +2,7 @@ import pytest
 
 from app.services.email_parsing import parse_eml_bytes
 from app.services.pst_extraction import (
+    _MAX_RTF_DEENCAPSULATE_BYTES,
     PSTExtractionError,
     _rtf_deencapsulated_body,
     _stage_pypff_email,
@@ -191,6 +192,26 @@ def test_rtf_deencapsulated_body_returns_empty_on_non_encapsulated_rtf():
         rb"\viewkind4\uc1\pard\f0\fs20 Just a plain rtf doc.\par}"
     )
     plain, html = _rtf_deencapsulated_body(_FakeMessage(rtf=freeform_rtf))
+    assert plain == ""
+    assert html == ""
+
+
+def test_rtf_deencapsulated_body_skips_oversized_bodies_without_parsing_them(monkeypatch):
+    # A large RTF body is overwhelmingly a large embedded picture, not large
+    # text (RTFDE's grammar-based parser measured ~13s for a 1MB body in a
+    # real benchmark) -- extract_pst runs every message through this
+    # synchronously in one thread, so a single such message would otherwise
+    # stall the whole import. Confirms the cap skips DeEncapsulator entirely
+    # rather than merely being fast for this particular oversized sample.
+    import app.services.pst_extraction as pst_extraction_module
+
+    def _fail_if_called(*args, **kwargs):
+        raise AssertionError("DeEncapsulator should not be invoked over the size cap")
+
+    monkeypatch.setattr(pst_extraction_module, "DeEncapsulator", _fail_if_called)
+
+    oversized_rtf = b"{\\rtf1\\fromtext " + (b"x" * (_MAX_RTF_DEENCAPSULATE_BYTES + 1)) + b"}"
+    plain, html = _rtf_deencapsulated_body(_FakeMessage(rtf=oversized_rtf))
     assert plain == ""
     assert html == ""
 
