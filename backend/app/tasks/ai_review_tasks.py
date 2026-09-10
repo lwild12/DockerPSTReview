@@ -46,9 +46,17 @@ def _text_for_scoring(document: Document) -> str:
     HTML-only emails. ocr_text (attachments OCR'd because their PDF had
     no extractable text layer) is appended too rather than substituted,
     since it's a genuinely separate source that's never wrong to include
-    when present."""
+    when present.
+
+    body_text is checked for actual (non-whitespace) content, not just
+    truthiness -- a real email observed in production had a `text/plain`
+    part containing only "\n", a near-empty placeholder some mail clients
+    generate alongside the real HTML-formatted content. That string is
+    non-empty so a plain `if document.body_text:` took it and never fell
+    back to body_html, sending the model 1 character of body text for a
+    message with a full, substantial HTML body."""
     parts = []
-    if document.body_text:
+    if document.body_text and document.body_text.strip():
         parts.append(document.body_text)
     elif document.body_html:
         parts.append(_plain_text_from_html(document.body_html))
