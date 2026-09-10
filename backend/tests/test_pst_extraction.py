@@ -282,6 +282,26 @@ def test_rtf_deencapsulated_body_skips_oversized_bodies_without_parsing_them(mon
     assert html == ""
 
 
+def test_rtf_deencapsulated_body_recovers_text_past_a_large_embedded_picture():
+    # Regression test: the size cap above used to apply to the *raw* body,
+    # so a completely ordinary note with one inline signature logo or
+    # screenshot -- whose hex-encoded picture data alone easily exceeds the
+    # cap -- lost its real text too, not just the picture. The picture's
+    # hex blob should get stripped before the size check, leaving the
+    # surrounding text recoverable.
+    huge_hex_picture = b"AB" * 40_000  # 80,000 hex chars: a picture, not text
+    rtf = (
+        rb"{\rtf1\fbidis\ansi\ansicpg1252\fromtext\deff0{\fonttbl{\f0\fswiss Arial;}}"
+        rb"\viewkind4\uc1\pard\f0\fs20 Real message text before the picture.\par"
+        rb"{\pict\wmetafile8\picw1000\pich1000 " + huge_hex_picture + rb"}"
+        rb"\par More real text after the picture.\par}"
+    )
+    assert len(rtf) > _MAX_RTF_DEENCAPSULATE_BYTES
+    plain, html = _rtf_deencapsulated_body(_FakeMessage(rtf=rtf))
+    assert "Real message text before the picture." in plain
+    assert "More real text after the picture." in plain
+
+
 def test_stage_pypff_email_falls_back_to_rtf_body_when_plain_and_html_are_empty(tmp_path):
     message = _FakeMessage(plain="", html="", rtf=ENCAPSULATED_PLAIN_RTF)
     _item_id, path = _stage_pypff_email(message, str(tmp_path))
