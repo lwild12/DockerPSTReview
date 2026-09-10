@@ -208,3 +208,41 @@ async def test_get_document_native_file_missing_returns_404(client, db_session):
     document = await _seed_document(db_session, case_id)
     resp = await client.get(f"/api/cases/{case_id}/documents/{document.id}/native")
     assert resp.status_code == 404
+
+
+async def test_list_documents_pagination_covers_every_row_when_sort_keys_tie(client, db_session):
+    # Documents from one PST import batch share the same created_at
+    # (Postgres' now() is transaction-scoped) and non-email docs have no
+    # sent_at, so without a unique tiebreaker in the ORDER BY, paging
+    # through with OFFSET/LIMIT across separate queries isn't guaranteed to
+    # visit every row exactly once -- this is exactly what the frontend's
+    # "add all documents to a review set" flow relies on.
+    _, case_id = await _setup_case(client)
+    seeded_ids = set()
+    for i in range(7):
+        doc = await _seed_document(
+            db_session,
+            case_id,
+            doc_type=DocType.attachment,
+            subject=f"attachment {i}",
+            sender="",
+        )
+        seeded_ids.add(doc.id)
+
+    seen_ids: list[uuid.UUID] = []
+    page = 1
+    page_size = 2
+    while True:
+        resp = await client.get(
+            f"/api/cases/{case_id}/documents",
+            params={"page": page, "page_size": page_size},
+        )
+        assert resp.status_code == 200
+        batch = resp.json()
+        seen_ids.extend(uuid.UUID(d["id"]) for d in batch)
+        if len(batch) < page_size:
+            break
+        page += 1
+
+    assert set(seen_ids) == seeded_ids
+    assert len(seen_ids) == len(seeded_ids), "a document was returned more than once across pages"
