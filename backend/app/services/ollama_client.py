@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 from dataclasses import dataclass
 
 import httpx
+
+logger = logging.getLogger(__name__)
 
 # Named constant rather than inline so it's easy to iterate on post-launch
 # without touching the request/parsing logic around it. There's no eval
@@ -119,13 +122,28 @@ async def score_document_relevance(
         )
 
     headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+    user_prompt = _build_user_prompt(criteria, subject, sender, body)
     payload = {
         "model": model,
         "system": SYSTEM_PROMPT,
-        "prompt": _build_user_prompt(criteria, subject, sender, body),
+        "prompt": user_prompt,
         "format": "json",
         "stream": False,
     }
+
+    # INFO: a bounded preview -- enough to sanity-check that real document
+    # content is actually reaching the model (the original bug this is a
+    # response to) without routinely dumping full, potentially sensitive
+    # document bodies into the worker's default log level. DEBUG carries
+    # the whole prompt for when that's not enough.
+    logger.info(
+        "AI review: scoring subject=%r against model=%s -- body is %d chars, starts: %r",
+        subject[:200],
+        model,
+        len(body),
+        body[:200],
+    )
+    logger.debug("AI review: full prompt sent to Ollama:\n%s", user_prompt)
 
     owns_client = client is None
     if owns_client:
@@ -152,7 +170,10 @@ async def score_document_relevance(
         if not isinstance(response_text, str):
             raise OllamaError(f"Ollama response missing 'response' field: {response_body!r:.500}")
 
-        return _parse_relevance_result(response_text)
+        logger.info("AI review: raw model response: %r", response_text[:500])
+        result = _parse_relevance_result(response_text)
+        logger.info("AI review: parsed score=%d rationale=%r", result.score, result.rationale)
+        return result
     finally:
         if owns_client:
             await client.aclose()
