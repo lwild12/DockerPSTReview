@@ -1,9 +1,11 @@
 import json
+import logging
 
 import httpx
 import pytest
 
 from app.services.ollama_client import OllamaError, score_document_relevance
+from app.services.ollama_client import logger as ollama_logger
 
 
 def _client_for(handler) -> httpx.AsyncClient:
@@ -179,3 +181,22 @@ async def test_scoring_logs_a_preview_of_what_was_sent_and_received(caplog):
     log_text = "\n".join(caplog.messages)
     assert "Here is the Q3 budget breakdown." in log_text
     assert "score=42" in log_text
+
+
+def test_logger_fires_info_even_when_root_logger_is_warning():
+    # uvicorn's default logging setup (used by the `backend` container, the
+    # per-document re-run button's entry point) leaves an unconfigured
+    # logger like this one at the root's default WARNING, silently
+    # dropping every INFO call above -- confirmed via a real
+    # uvicorn.config.Config().configure_logging() call. The exact same
+    # code worked when triggered via `worker` only because Celery's
+    # --loglevel=INFO happens to set the root logger to INFO, masking the
+    # bug there. caplog.at_level (used above) forces the level and would
+    # mask this too, so this test sets the root level directly instead.
+    root = logging.getLogger()
+    original_root_level = root.level
+    try:
+        root.setLevel(logging.WARNING)
+        assert ollama_logger.isEnabledFor(logging.INFO)
+    finally:
+        root.setLevel(original_root_level)
