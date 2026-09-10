@@ -161,3 +161,21 @@ async def test_long_document_body_is_truncated_in_the_prompt():
         await _score(client, body="x" * 20000)
 
     assert len(seen_request["body"]["prompt"]) < 15000
+
+
+async def test_scoring_logs_a_preview_of_what_was_sent_and_received(caplog):
+    # Diagnostic aid: an admin unsure whether real document content is
+    # reaching the model (the original "subject and sender only" bug) can
+    # check `docker compose logs worker` rather than needing a debugger.
+    def handler(request):
+        return httpx.Response(
+            200, json={"response": json.dumps({"score": 42, "rationale": "Somewhat relevant."})}
+        )
+
+    with caplog.at_level("INFO", logger="app.services.ollama_client"):
+        async with _client_for(handler) as client:
+            await _score(client, body="Here is the Q3 budget breakdown.")
+
+    log_text = "\n".join(caplog.messages)
+    assert "Here is the Q3 budget breakdown." in log_text
+    assert "score=42" in log_text
