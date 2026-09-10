@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 from dataclasses import dataclass, field
 from datetime import datetime
 from email import policy
@@ -70,6 +71,7 @@ def parse_eml_bytes(raw: bytes) -> ParsedEmail:
     body_text = ""
     body_html = ""
     attachments: list[ParsedAttachment] = []
+    inline_images: dict[str, tuple[str, bytes]] = {}
 
     if msg.is_multipart():
         for part in msg.walk():
@@ -78,7 +80,12 @@ def parse_eml_bytes(raw: bytes) -> ParsedEmail:
             disposition = part.get_content_disposition()
             content_type = part.get_content_type()
             filename = part.get_filename()
-            if disposition == "attachment" or (disposition != "inline" and filename):
+            if disposition == "inline" and content_type.startswith("image/"):
+                content_id = (part.get("Content-ID") or "").strip().strip("<>")
+                if content_id:
+                    payload = part.get_payload(decode=True) or b""
+                    inline_images[content_id] = (content_type, payload)
+            elif disposition == "attachment" or (disposition != "inline" and filename):
                 payload = part.get_payload(decode=True) or b""
                 attachments.append(
                     ParsedAttachment(
@@ -96,6 +103,11 @@ def parse_eml_bytes(raw: bytes) -> ParsedEmail:
             body_html = msg.get_content()
         else:
             body_text = msg.get_content()
+
+    if body_html and inline_images:
+        for content_id, (mime_type, payload) in inline_images.items():
+            data_uri = f"data:{mime_type};base64,{base64.b64encode(payload).decode('ascii')}"
+            body_html = body_html.replace(f"cid:{content_id}", data_uri)
 
     return ParsedEmail(
         subject=str(msg["subject"] or ""),

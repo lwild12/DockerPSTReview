@@ -1,3 +1,4 @@
+import base64
 import io
 
 import fitz
@@ -74,6 +75,50 @@ def test_render_email_html_body_is_sanitized_and_blocks_network_fetch():
     # the <script> tag is stripped by nh3, and the remote <img> fetch is blocked
     # by the custom url_fetcher (WeasyPrint just renders a broken-image icon,
     # it doesn't raise) — either way, no network call happens.
+
+
+_PNG_1X1 = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk"
+    "+A8AAQUBAScY42YAAAAASUVORK5CYII="
+)
+
+
+def test_render_email_inline_image_data_uri_is_embedded_in_the_pdf():
+    # Regression test: an inline image (e.g. a signature logo) is recovered
+    # as a `data:` URI in body_html (see email_parsing.py's cid: resolution)
+    # -- nh3's default url_schemes rejects `data:` entirely, which silently
+    # dropped the img src and left nothing rendered even though nothing
+    # else in the pipeline looked broken.
+    data_uri = f"data:image/png;base64,{base64.b64encode(_PNG_1X1).decode()}"
+    pdf_bytes = render_email_to_pdf(
+        subject="Signed",
+        sender="a@x.com",
+        recipients_to=["b@x.com"],
+        recipients_cc=[],
+        sent_at=None,
+        body_text="",
+        body_html=f'<p>Regards,<br><img src="{data_uri}"></p>',
+    )
+    with fitz.open(stream=pdf_bytes, filetype="pdf") as doc:
+        images = [img for page in doc for img in page.get_images()]
+    assert images, "the inline image never made it into the rendered PDF"
+
+
+def test_render_email_data_uri_href_is_still_blocked():
+    # Allowing the `data:` scheme for inline images must not also open up
+    # `data:text/html` (or similar) as a clickable href -- a known
+    # phishing/script vector nh3 otherwise blocks entirely by default.
+    pdf_bytes = render_email_to_pdf(
+        subject="Phish",
+        sender="a@x.com",
+        recipients_to=["b@x.com"],
+        recipients_cc=[],
+        sent_at=None,
+        body_text="",
+        body_html='<p><a href="data:text/html,evil">click me</a></p>',
+    )
+    text = _pdf_text(pdf_bytes)
+    assert "click me" in text  # the link text still renders, just not as a link
 
 
 def test_render_contact_to_pdf():

@@ -1,4 +1,28 @@
+import base64
+
 from app.services.email_parsing import parse_eml_bytes
+
+INLINE_IMAGE_BYTES = b"FAKEPNGBYTES"
+
+WITH_INLINE_SIGNATURE_IMAGE = f"""From: alice@example.com
+To: bob@example.com
+Subject: Signed email
+Date: Mon, 01 Jan 2024 12:00:00 -0500
+Content-Type: multipart/related; boundary="REL"
+
+--REL
+Content-Type: text/html; charset="utf-8"
+
+<p>Regards,<br><img src="cid:sig123@test"></p>
+--REL
+Content-Type: image/png
+Content-Transfer-Encoding: base64
+Content-ID: <sig123@test>
+Content-Disposition: inline
+
+{base64.b64encode(INLINE_IMAGE_BYTES).decode()}
+--REL--
+""".encode()
 
 SIMPLE_MULTIPART = b"""From: Alice Smith <alice@example.com>
 To: Bob Jones <bob@example.com>, "Carol, X" <carol@example.com>
@@ -83,3 +107,11 @@ def test_handles_missing_optional_headers_gracefully():
     assert parsed.recipients_to == []
     assert parsed.sent_at is None
     assert parsed.references == []
+
+
+def test_inline_signature_image_is_embedded_in_body_not_listed_as_an_attachment():
+    parsed = parse_eml_bytes(WITH_INLINE_SIGNATURE_IMAGE)
+    assert parsed.attachments == []
+    assert "cid:sig123@test" not in parsed.body_html
+    expected_data_uri = f"data:image/png;base64,{base64.b64encode(INLINE_IMAGE_BYTES).decode()}"
+    assert expected_data_uri in parsed.body_html

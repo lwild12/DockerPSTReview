@@ -42,6 +42,8 @@ _PR_MESSAGE_CLASS = 0x001A
 _PR_ATTACH_LONG_FILENAME = 0x3707
 _PR_ATTACH_FILENAME = 0x3704
 _PR_ATTACH_MIME_TAG = 0x370E
+_PR_ATTACHMENT_HIDDEN = 0x7FFE
+_PR_ATTACH_CONTENT_ID = 0x3712
 
 _PRESERVED_HEADERS = [
     "From",
@@ -84,11 +86,18 @@ def build_eml_bytes(
     plain_text: str,
     html: str,
     attachments: list[tuple[str, str, bytes]],
+    inline_images: list[tuple[str, str, bytes]] | None = None,
 ) -> bytes:
     """Build RFC822 bytes from already-extracted parts. Only logical headers
     (From/To/Subject/Message-ID/etc, see `_PRESERVED_HEADERS`) are accepted —
     MIME-structural headers are never passed through, since the body/attachments
     here are rebuilt fresh rather than copied from any original MIME structure.
+
+    `inline_images` is `(content_id, mime_type, content)` — images the body's
+    HTML references by `cid:` (e.g. a signature logo), kept out of the regular
+    attachment list and instead added as a related part of the HTML body, so
+    they render inline rather than showing up as a separate reviewable
+    attachment.
     """
     out = EmailMessage(policy=policy.default)
     for key in _PRESERVED_HEADERS:
@@ -99,8 +108,21 @@ def build_eml_bytes(
     if html:
         out.set_content(plain_text or "")
         out.add_alternative(html, subtype="html")
+        if inline_images:
+            html_part = out.get_payload()[1]
+            for content_id, mime_type, content in inline_images:
+                maintype, _, subtype = (mime_type or "image/png").partition("/")
+                html_part.add_related(
+                    content,
+                    maintype=maintype or "image",
+                    subtype=subtype or "png",
+                    cid=f"<{content_id}>",
+                )
     else:
         out.set_content(plain_text or "")
+        # No HTML body to embed them into -- fall back to attaching them
+        # rather than silently dropping the content.
+        attachments = [*attachments, *(inline_images or [])]
 
     for filename, mime_type, content in attachments:
         maintype, _, subtype = (mime_type or "application/octet-stream").partition("/")
@@ -276,6 +298,29 @@ def _get_attachment_mime_type(attachment) -> str:
     return ""
 
 
+def _is_attachment_hidden(attachment) -> bool:
+    # PidTagAttachmentHidden -- Outlook sets this for inline body content
+    # (a signature logo, an embedded screenshot) so it doesn't clutter the
+    # visible attachment list.
+    entry = _find_record_entry(attachment, _PR_ATTACHMENT_HIDDEN)
+    if entry is None:
+        return False
+    try:
+        return bool(entry.get_data_as_boolean())
+    except Exception:
+        return False
+
+
+def _get_attachment_content_id(attachment) -> str:
+    entry = _find_record_entry(attachment, _PR_ATTACH_CONTENT_ID)
+    if entry is not None:
+        try:
+            return (entry.get_data_as_string() or "").strip().strip("<>")
+        except Exception:
+            pass
+    return ""
+
+
 def _decode_body(value) -> str:
     if not value:
         return ""
@@ -317,22 +362,41 @@ def _headers_from_message(message) -> dict[str, str]:
     return headers
 
 
-def _pypff_attachments(message) -> list[tuple[str, str, bytes]]:
-    attachments = []
+def _pypff_attachments(
+    message,
+) -> tuple[list[tuple[str, str, bytes]], list[tuple[str, str, bytes]]]:
+    """Split a message's attachments into (real attachments, inline images).
+
+    Outlook marks an attachment PR_ATTACHMENT_HIDDEN when it's inline body
+    content (a signature logo, an embedded screenshot) rather than something
+    the user attached -- those go out as inline images (keyed by their
+    PR_ATTACH_CONTENT_ID, matching the `cid:` references in the HTML body)
+    instead of real, separately-reviewable attachments. A hidden attachment
+    with no content ID can't be tied to any `cid:` reference in the body, so
+    it's dropped rather than either shown as an attachment or embedded
+    nowhere.
+    """
+    attachments: list[tuple[str, str, bytes]] = []
+    inline_images: list[tuple[str, str, bytes]] = []
     try:
         count = message.get_number_of_attachments()
     except Exception:
-        return attachments
+        return attachments, inline_images
     for i in range(count):
         try:
             attachment = message.get_attachment(i)
             data = attachment.read_buffer(attachment.get_size())
-            filename = _get_attachment_filename(attachment) or f"attachment-{i}"
             mime_type = _get_attachment_mime_type(attachment) or "application/octet-stream"
+            if _is_attachment_hidden(attachment):
+                content_id = _get_attachment_content_id(attachment)
+                if content_id:
+                    inline_images.append((content_id, mime_type, data))
+                continue
+            filename = _get_attachment_filename(attachment) or f"attachment-{i}"
             attachments.append((filename, mime_type, data))
         except Exception:
             logger.warning("Failed to read attachment %d, skipping it", i, exc_info=True)
-    return attachments
+    return attachments, inline_images
 
 
 # RTFDE's grammar-based parser is roughly linear in RTF size but with a very
@@ -384,8 +448,8 @@ def _stage_pypff_email(message, staging_dir: str) -> tuple[str, Path]:
     html = _decode_body(message.get_html_body())
     if not plain and not html:
         plain, html = _rtf_deencapsulated_body(message)
-    attachments = _pypff_attachments(message)
-    eml_bytes = build_eml_bytes(headers, plain, html, attachments)
+    attachments, inline_images = _pypff_attachments(message)
+    eml_bytes = build_eml_bytes(headers, plain, html, attachments, inline_images=inline_images)
 
     item_id = str(uuid.uuid4())
     path = Path(staging_dir) / f"{item_id}.eml"
