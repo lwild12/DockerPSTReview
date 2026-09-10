@@ -335,6 +335,18 @@ def _pypff_attachments(message) -> list[tuple[str, str, bytes]]:
     return attachments
 
 
+# RTFDE's grammar-based parser is roughly linear in RTF size but with a very
+# high constant factor -- a 1MB body (easily reached by one embedded
+# signature image or screenshot, common in real corporate mail) measured at
+# ~13s to de-encapsulate. A large RTF body is overwhelmingly a large
+# embedded picture, not large text, so past this size the picture (which
+# isn't recoverable as text/HTML anyway) is skipped rather than letting one
+# message stall the whole import -- extract_pst processes the entire PST
+# synchronously in one thread, so a single slow message blocks every
+# message after it.
+_MAX_RTF_DEENCAPSULATE_BYTES = 50_000
+
+
 def _rtf_deencapsulated_body(message) -> tuple[str, str]:
     """Recover (plain, html) from an RTF-only body via RTF de-encapsulation
     (MS-OXRTFCP). Outlook commonly stores a message's real plain-text/HTML
@@ -350,6 +362,11 @@ def _rtf_deencapsulated_body(message) -> tuple[str, str]:
     if isinstance(raw, str):
         raw = raw.encode("utf-8", errors="replace")
     elif not isinstance(raw, bytes):
+        return "", ""
+    if len(raw) > _MAX_RTF_DEENCAPSULATE_BYTES:
+        logger.info(
+            "RTF body too large to de-encapsulate (%d bytes) -- leaving body empty", len(raw)
+        )
         return "", ""
     try:
         de = DeEncapsulator(raw)
