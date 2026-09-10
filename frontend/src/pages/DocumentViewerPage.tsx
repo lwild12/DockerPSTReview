@@ -249,6 +249,22 @@ export function DocumentViewerPage() {
                 {document.recipients_to.join(", ")}
               </Text>
             )}
+            {document.recipients_cc.length > 0 && (
+              <Text size="sm">
+                <Text span fw={600}>
+                  Cc:
+                </Text>{" "}
+                {document.recipients_cc.join(", ")}
+              </Text>
+            )}
+            {document.recipients_bcc.length > 0 && (
+              <Text size="sm">
+                <Text span fw={600}>
+                  Bcc:
+                </Text>{" "}
+                {document.recipients_bcc.join(", ")}
+              </Text>
+            )}
             {document.sent_at && (
               <Text size="sm">
                 <Text span fw={600}>

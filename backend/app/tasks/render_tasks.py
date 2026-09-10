@@ -58,6 +58,7 @@ def render_document_bytes(document: Document) -> bytes:
             sender=document.sender,
             recipients_to=document.recipients_to,
             recipients_cc=document.recipients_cc,
+            recipients_bcc=document.recipients_bcc,
             sent_at=document.sent_at,
             body_text=document.body_text,
             body_html=document.body_html,

@@ -27,6 +27,7 @@ def test_render_email_to_pdf_includes_header_and_body():
         sender="alice@example.com",
         recipients_to=["bob@example.com"],
         recipients_cc=[],
+        recipients_bcc=[],
         sent_at=None,
         body_text="See attached.",
         body_html="",
@@ -38,6 +39,22 @@ def test_render_email_to_pdf_includes_header_and_body():
     assert "See attached." in text
 
 
+def test_render_email_to_pdf_includes_cc_and_bcc_when_present():
+    pdf_bytes = render_email_to_pdf(
+        subject="Quarterly numbers",
+        sender="alice@example.com",
+        recipients_to=["bob@example.com"],
+        recipients_cc=["carol@example.com"],
+        recipients_bcc=["dave@example.com"],
+        sent_at=None,
+        body_text="See attached.",
+        body_html="",
+    )
+    text = _pdf_text(pdf_bytes)
+    assert "carol@example.com" in text
+    assert "dave@example.com" in text
+
+
 def test_render_email_header_labels_do_not_overlap_their_values():
     # Regression test: the "Subject:" label previously overflowed its fixed-width
     # box and visually overlapped the subject value next to it.
@@ -46,6 +63,7 @@ def test_render_email_header_labels_do_not_overlap_their_values():
         sender="alice@example.com",
         recipients_to=["bob@example.com"],
         recipients_cc=[],
+        recipients_bcc=[],
         sent_at=None,
         body_text="body",
         body_html="",
@@ -66,6 +84,7 @@ def test_render_email_html_body_is_sanitized_and_blocks_network_fetch():
         sender="a@x.com",
         recipients_to=["b@x.com"],
         recipients_cc=[],
+        recipients_bcc=[],
         sent_at=None,
         body_text="",
         body_html='<p>Hello <script>alert(1)</script><img src="http://evil.example/pixel.png"></p>',
@@ -95,6 +114,7 @@ def test_render_email_inline_image_data_uri_is_embedded_in_the_pdf():
         sender="a@x.com",
         recipients_to=["b@x.com"],
         recipients_cc=[],
+        recipients_bcc=[],
         sent_at=None,
         body_text="",
         body_html=f'<p>Regards,<br><img src="{data_uri}"></p>',
@@ -113,6 +133,7 @@ def test_render_email_data_uri_href_is_still_blocked():
         sender="a@x.com",
         recipients_to=["b@x.com"],
         recipients_cc=[],
+        recipients_bcc=[],
         sent_at=None,
         body_text="",
         body_html='<p><a href="data:text/html,evil">click me</a></p>',
