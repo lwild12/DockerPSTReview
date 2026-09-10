@@ -124,18 +124,18 @@ suggest_concurrency() {
 # Enter keypress back into the terminal asynchronously), a stray leftover
 # newline -- or, it turns out, a whole duplicated answer -- can otherwise
 # land right as the next read() starts and satisfy it instantly, silently
-# feeding that prompt an answer the user never typed for it. A single
-# fixed-length pause before draining wasn't a wide enough margin: in
-# practice the relay's lag varies enough that the duplicate can still land
-# just after a short, fixed wait. _settle_tty instead waits for a real
-# stretch of quiet (no draining resets the clock), and ask_number
-# additionally distrusts any answer that arrives suspiciously fast after
-# its prompt is printed -- no person can read a prompt and answer it in
-# well under a fifth of a second, so that's leftover relay traffic, not a
-# real answer, and falling back to the default is safer than trusting it.
+# feeding that prompt an answer the user never typed for it. _settle_tty
+# waits for a real stretch of quiet (no draining resets the clock) rather
+# than checking at one fixed point in time, but it's capped at MAX_WAIT --
+# a resettable "wait for quiet" loop with no upper bound can itself hang
+# indefinitely if anything keeps trickling in (a real report from an
+# install that never got past this point), so this can never wait longer
+# than that regardless of how busy the terminal looks.
 _settle_tty() {
-  local quiet_streak=0 junk=""
-  while [ "$quiet_streak" -lt 6 ]; do
+  local quiet_streak=0 junk="" start_s deadline_s
+  start_s="$(date +%s)"
+  deadline_s=$((start_s + 3))
+  while [ "$quiet_streak" -lt 6 ] && [ "$(date +%s)" -lt "$deadline_s" ]; do
     if read -r -t 0.15 junk <&3 2>/dev/null; then
       quiet_streak=0
     else
@@ -166,6 +166,29 @@ ask_number() {
   fi
 }
 
+# ask_two_numbers PROMPT DEFAULT1 DEFAULT2 -- like ask_number, but asks for
+# both values with a single prompt/read instead of two back-to-back ones.
+# That sidesteps the whole class of bug above at its root rather than
+# continuing to patch around it: with only one read, there's no "next
+# prompt" for stray relayed input to leak into. Prints "VALUE1 VALUE2".
+ask_two_numbers() {
+  local prompt="$1" default1="$2" default2="$3" line="" v1="" v2=""
+  if { exec 3<>/dev/tty; } 2>/dev/null && [ -t 3 ]; then
+    _settle_tty
+    printf '%s [%s %s]: ' "$prompt" "$default1" "$default2" >&2
+    read -r -t 60 line <&3 2>/dev/null || line=""
+    echo >&2
+    exec 3<&- 2>/dev/null || true
+  else
+    printf '  (no interactive terminal detected -- using defaults %s %s for: %s)\n' \
+      "$default1" "$default2" "$prompt" >&2
+  fi
+  read -r v1 v2 <<<"$line"
+  [[ "$v1" =~ ^[0-9]+$ ]] && [ "$v1" -ge 1 ] || v1="$default1"
+  [[ "$v2" =~ ^[0-9]+$ ]] && [ "$v2" -ge 1 ] || v2="$default2"
+  echo "$v1 $v2"
+}
+
 # RENDER_CONCURRENCY/PARSE_CONCURRENCY predate this update on older
 # installs -- ask for them once here instead of silently applying a
 # default, since they're worth sizing to the machine's CPU count.
@@ -176,11 +199,24 @@ if ! grep -q '^RENDER_CONCURRENCY=' .env || ! grep -q '^PARSE_CONCURRENCY=' .env
   PARSE_DEFAULT="$(suggest_concurrency "$CPU_CORES" "$RAM_MB" 8 150)"
   echo
   log "This update adds parallel PST import processing, not yet configured in your .env (detected ${CPU_CORES} CPU core(s), ${RAM_MB}MB RAM). Press Enter to accept the suggested defaults, or adjust later in .env."
-  if ! grep -q '^RENDER_CONCURRENCY=' .env; then
-    set_env_var RENDER_CONCURRENCY "$(ask_number "  Documents to render (PDF/OCR) at once per import" "$RENDER_DEFAULT")"
-  fi
-  if ! grep -q '^PARSE_CONCURRENCY=' .env; then
-    set_env_var PARSE_CONCURRENCY "$(ask_number "  Documents to parse at once per import" "$PARSE_DEFAULT")"
+  if ! grep -q '^RENDER_CONCURRENCY=' .env && ! grep -q '^PARSE_CONCURRENCY=' .env; then
+    # Common case: neither is set yet -- ask for both in one combined
+    # prompt (see ask_two_numbers above for why that's preferred over two
+    # back-to-back single-value prompts).
+    read -r RENDER_CONCURRENCY PARSE_CONCURRENCY <<<"$(ask_two_numbers \
+      "  Documents to render and parse at once per import (render parse)" \
+      "$RENDER_DEFAULT" "$PARSE_DEFAULT")"
+    set_env_var RENDER_CONCURRENCY "$RENDER_CONCURRENCY"
+    set_env_var PARSE_CONCURRENCY "$PARSE_CONCURRENCY"
+  else
+    # Rare case: one already exists from a partial/older setup -- only one
+    # prompt is needed here, so there's no back-to-back risk to combine away.
+    if ! grep -q '^RENDER_CONCURRENCY=' .env; then
+      set_env_var RENDER_CONCURRENCY "$(ask_number "  Documents to render (PDF/OCR) at once per import" "$RENDER_DEFAULT")"
+    fi
+    if ! grep -q '^PARSE_CONCURRENCY=' .env; then
+      set_env_var PARSE_CONCURRENCY "$(ask_number "  Documents to parse at once per import" "$PARSE_DEFAULT")"
+    fi
   fi
 fi
 

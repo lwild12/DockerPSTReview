@@ -162,18 +162,18 @@ suggest_concurrency() {
 # Enter keypress back into the terminal asynchronously), a stray leftover
 # newline -- or, it turns out, a whole duplicated answer -- can otherwise
 # land right as the next read() starts and satisfy it instantly, silently
-# feeding that prompt an answer the user never typed for it. A single
-# fixed-length pause before draining wasn't a wide enough margin: in
-# practice the relay's lag varies enough that the duplicate can still land
-# just after a short, fixed wait. _settle_tty instead waits for a real
-# stretch of quiet (no draining resets the clock), and ask_number
-# additionally distrusts any answer that arrives suspiciously fast after
-# its prompt is printed -- no person can read a prompt and answer it in
-# well under a fifth of a second, so that's leftover relay traffic, not a
-# real answer, and falling back to the default is safer than trusting it.
+# feeding that prompt an answer the user never typed for it. _settle_tty
+# waits for a real stretch of quiet (no draining resets the clock) rather
+# than checking at one fixed point in time, but it's capped at MAX_WAIT --
+# a resettable "wait for quiet" loop with no upper bound can itself hang
+# indefinitely if anything keeps trickling in (a real report from an
+# install that never got past this point), so this can never wait longer
+# than that regardless of how busy the terminal looks.
 _settle_tty() {
-  local quiet_streak=0 junk=""
-  while [ "$quiet_streak" -lt 6 ]; do
+  local quiet_streak=0 junk="" start_s deadline_s
+  start_s="$(date +%s)"
+  deadline_s=$((start_s + 3))
+  while [ "$quiet_streak" -lt 6 ] && [ "$(date +%s)" -lt "$deadline_s" ]; do
     if read -r -t 0.15 junk <&3 2>/dev/null; then
       quiet_streak=0
     else
@@ -202,6 +202,29 @@ ask_number() {
   else
     echo "$default"
   fi
+}
+
+# ask_two_numbers PROMPT DEFAULT1 DEFAULT2 -- like ask_number, but asks for
+# both values with a single prompt/read instead of two back-to-back ones.
+# That sidesteps the whole class of bug above at its root rather than
+# continuing to patch around it: with only one read, there's no "next
+# prompt" for stray relayed input to leak into. Prints "VALUE1 VALUE2".
+ask_two_numbers() {
+  local prompt="$1" default1="$2" default2="$3" line="" v1="" v2=""
+  if { exec 3<>/dev/tty; } 2>/dev/null && [ -t 3 ]; then
+    _settle_tty
+    printf '%s [%s %s]: ' "$prompt" "$default1" "$default2" >&2
+    read -r -t 60 line <&3 2>/dev/null || line=""
+    echo >&2
+    exec 3<&- 2>/dev/null || true
+  else
+    printf '  (no interactive terminal detected -- using defaults %s %s for: %s)\n' \
+      "$default1" "$default2" "$prompt" >&2
+  fi
+  read -r v1 v2 <<<"$line"
+  [[ "$v1" =~ ^[0-9]+$ ]] && [ "$v1" -ge 1 ] || v1="$default1"
+  [[ "$v2" =~ ^[0-9]+$ ]] && [ "$v2" -ge 1 ] || v2="$default2"
+  echo "$v1 $v2"
 }
 
 SERVER_IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
@@ -239,8 +262,11 @@ else
   PARSE_DEFAULT="$(suggest_concurrency "$CPU_CORES" "$RAM_MB" 8 150)"
   echo
   log "PST imports process multiple documents in parallel (detected ${CPU_CORES} CPU core(s), ${RAM_MB}MB RAM on this machine). Press Enter to accept the suggested defaults, or adjust later in .env."
-  set_env_var RENDER_CONCURRENCY "$(ask_number "  Documents to render (PDF/OCR) at once per import" "$RENDER_DEFAULT")"
-  set_env_var PARSE_CONCURRENCY "$(ask_number "  Documents to parse at once per import" "$PARSE_DEFAULT")"
+  read -r RENDER_CONCURRENCY PARSE_CONCURRENCY <<<"$(ask_two_numbers \
+    "  Documents to render and parse at once per import (render parse)" \
+    "$RENDER_DEFAULT" "$PARSE_DEFAULT")"
+  set_env_var RENDER_CONCURRENCY "$RENDER_CONCURRENCY"
+  set_env_var PARSE_CONCURRENCY "$PARSE_CONCURRENCY"
 
   chmod 600 .env
   log "Wrote $REPO_DIR/.env -- back this up, it's the only copy of your generated secrets."
