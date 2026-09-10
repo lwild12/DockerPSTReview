@@ -3,7 +3,12 @@ import pytest
 from app.services.email_parsing import parse_eml_bytes
 from app.services.pst_extraction import (
     _MAX_RTF_DEENCAPSULATE_BYTES,
+    _PR_ATTACH_CONTENT_ID,
+    _PR_ATTACH_LONG_FILENAME,
+    _PR_ATTACH_MIME_TAG,
+    _PR_ATTACHMENT_HIDDEN,
     PSTExtractionError,
+    _pypff_attachments,
     _rtf_deencapsulated_body,
     _stage_pypff_email,
     build_eml_bytes,
@@ -30,14 +35,72 @@ ENCAPSULATED_HTML_RTF = (
 )
 
 
+class _FakeEntry:
+    def __init__(self, tag, value, as_boolean=False):
+        self._tag = tag
+        self._value = value
+        self._as_boolean = as_boolean
+
+    def get_entry_type(self):
+        return self._tag
+
+    def get_data_as_string(self):
+        return None if self._as_boolean else self._value
+
+    def get_data_as_boolean(self):
+        return self._value if self._as_boolean else None
+
+
+class _FakeRecordSet:
+    def __init__(self, entries):
+        self._entries = entries
+
+    def get_number_of_entries(self):
+        return len(self._entries)
+
+    def get_entry(self, j):
+        return self._entries[j]
+
+
+class _FakeAttachment:
+    """Stands in for a pypff.attachment, exposing only what
+    _pypff_attachments and its helpers touch."""
+
+    def __init__(self, data, filename=None, mime_type=None, hidden=False, content_id=None):
+        self._data = data
+        entries = []
+        if filename is not None:
+            entries.append(_FakeEntry(_PR_ATTACH_LONG_FILENAME, filename))
+        if mime_type is not None:
+            entries.append(_FakeEntry(_PR_ATTACH_MIME_TAG, mime_type))
+        if hidden:
+            entries.append(_FakeEntry(_PR_ATTACHMENT_HIDDEN, True, as_boolean=True))
+        if content_id is not None:
+            entries.append(_FakeEntry(_PR_ATTACH_CONTENT_ID, content_id))
+        self._record_set = _FakeRecordSet(entries)
+
+    def get_size(self):
+        return len(self._data)
+
+    def read_buffer(self, _size):
+        return self._data
+
+    def get_number_of_record_sets(self):
+        return 1
+
+    def get_record_set(self, _i):
+        return self._record_set
+
+
 class _FakeMessage:
     """Stands in for a pypff.message, exposing only what _stage_pypff_email
     and its helpers touch."""
 
-    def __init__(self, plain="", html="", rtf: bytes | None = None):
+    def __init__(self, plain="", html="", rtf: bytes | None = None, attachments=None):
         self._plain = plain
         self._html = html
         self._rtf = rtf
+        self._attachments = attachments or []
 
     def get_transport_headers(self):
         return ""
@@ -61,7 +124,10 @@ class _FakeMessage:
         return self._rtf
 
     def get_number_of_attachments(self):
-        return 0
+        return len(self._attachments)
+
+    def get_attachment(self, i):
+        return self._attachments[i]
 
 
 SAMPLE_VCARD = """BEGIN:VCARD
@@ -230,3 +296,40 @@ def test_stage_pypff_email_prefers_native_plain_body_over_rtf(tmp_path):
 
     parsed = parse_eml_bytes(path.read_bytes())
     assert parsed.body_text.strip() == "Native plain body"
+
+
+def test_pypff_attachments_separates_hidden_inline_images_from_real_attachments():
+    real = _FakeAttachment(b"%PDF-fake", filename="report.pdf", mime_type="application/pdf")
+    inline = _FakeAttachment(
+        b"PNGDATA", mime_type="image/png", hidden=True, content_id="sig123@test"
+    )
+    # A hidden attachment with no content ID can't be tied to any `cid:`
+    # reference in the body -- dropped rather than shown as an attachment
+    # or embedded nowhere.
+    orphan_hidden = _FakeAttachment(b"ORPHAN", mime_type="image/png", hidden=True)
+
+    attachments, inline_images = _pypff_attachments(
+        _FakeMessage(attachments=[real, inline, orphan_hidden])
+    )
+
+    assert [a[0] for a in attachments] == ["report.pdf"]
+    assert [(cid, mime) for cid, mime, _data in inline_images] == [("sig123@test", "image/png")]
+
+
+def test_stage_pypff_email_embeds_inline_image_instead_of_listing_it_as_an_attachment(tmp_path):
+    real = _FakeAttachment(b"%PDF-fake", filename="report.pdf", mime_type="application/pdf")
+    signature_logo = _FakeAttachment(
+        b"PNGDATA", mime_type="image/png", hidden=True, content_id="sig123@test"
+    )
+    message = _FakeMessage(
+        plain="",
+        html='<html><body>Regards<br><img src="cid:sig123@test"></body></html>',
+        attachments=[real, signature_logo],
+    )
+
+    _item_id, path = _stage_pypff_email(message, str(tmp_path))
+    parsed = parse_eml_bytes(path.read_bytes())
+
+    assert [a.filename for a in parsed.attachments] == ["report.pdf"]
+    assert "cid:sig123@test" not in parsed.body_html
+    assert "data:image/png;base64," in parsed.body_html
