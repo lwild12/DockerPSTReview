@@ -96,15 +96,23 @@ async def list_documents(
                 Document.ocr_text.ilike(pattern),
             )
         )
+    # Document.id breaks ties: documents from one PST import share the same
+    # created_at (Postgres' now() is transaction-scoped) and non-email docs
+    # have no sent_at, so without a unique tiebreaker Postgres doesn't
+    # guarantee consistent ordering of tied rows across separate paginated
+    # queries -- rows could be skipped or repeated between pages.
     if tsquery is not None:
         # Full-text hits rank by relevance first; the ILIKE-only fallback matches
         # (substrings a stemmed tsquery wouldn't catch) sort after via ts_rank's 0.
         stmt = stmt.order_by(
             func.ts_rank(Document.search_vector, tsquery).desc(),
             Document.sent_at.desc().nullslast(),
+            Document.id,
         )
     else:
-        stmt = stmt.order_by(Document.sent_at.desc().nullslast(), Document.created_at.desc())
+        stmt = stmt.order_by(
+            Document.sent_at.desc().nullslast(), Document.created_at.desc(), Document.id
+        )
     stmt = stmt.offset((page - 1) * page_size).limit(page_size)
     result = await db.execute(stmt)
     documents = result.scalars().unique().all()
