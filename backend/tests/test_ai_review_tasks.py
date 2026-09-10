@@ -49,6 +49,91 @@ async def _seed_documents(db_session, case_id, count) -> list[Document]:
     return documents
 
 
+def test_plain_text_from_html_strips_tags_and_separates_blocks():
+    html_body = (
+        "<html><body><p>Hello <b>world</b></p><script>evil()</script>"
+        "<p>Second &amp; para</p></body></html>"
+    )
+    text = ai_review_tasks._plain_text_from_html(html_body)
+    assert "evil()" not in text
+    assert "Hello world" in text
+    assert "Second & para" in text
+    # block boundary preserved -- the two paragraphs don't run together
+    assert "worldSecond" not in text
+
+
+def test_text_for_scoring_prefers_body_text_when_present():
+    document = Document(
+        id=uuid.uuid4(),
+        case_id=uuid.uuid4(),
+        doc_type=DocType.email,
+        body_text="Plain text body.",
+        body_html="<p>HTML body.</p>",
+    )
+    assert ai_review_tasks._text_for_scoring(document) == "Plain text body."
+
+
+def test_text_for_scoring_falls_back_to_html_when_body_text_empty():
+    # The actual production bug: an HTML-only email (no text/plain MIME
+    # part at all, common for templated corporate mail) left body_text
+    # empty, so the model only ever saw subject/sender -- confirmed by a
+    # live rationale that said as much.
+    document = Document(
+        id=uuid.uuid4(),
+        case_id=uuid.uuid4(),
+        doc_type=DocType.email,
+        body_text="",
+        body_html="<p>Only available as HTML.</p>",
+    )
+    assert "Only available as HTML." in ai_review_tasks._text_for_scoring(document)
+
+
+def test_text_for_scoring_includes_ocr_text():
+    document = Document(
+        id=uuid.uuid4(),
+        case_id=uuid.uuid4(),
+        doc_type=DocType.attachment,
+        body_text="",
+        body_html="",
+        ocr_text="Scanned page content.",
+    )
+    assert "Scanned page content." in ai_review_tasks._text_for_scoring(document)
+
+
+async def test_run_ai_review_sends_html_derived_text_for_html_only_emails(db_session, monkeypatch):
+    db_session.add(SystemSettings(ai_review_concurrency=1))
+    await db_session.commit()
+
+    case = await _make_case(db_session)
+    document = Document(
+        id=uuid.uuid4(),
+        case_id=case.id,
+        doc_type=DocType.email,
+        dedup_status=DedupStatus.primary,
+        subject="Account Security Best Practices",
+        sender="spam@clf.uk",
+        recipients_to=[],
+        body_text="",
+        body_html="<p>Never share your password with anyone.</p>",
+        content_hash=str(uuid.uuid4()),
+    )
+    db_session.add(document)
+    await db_session.commit()
+
+    seen_bodies = []
+
+    async def _fake_score(*, body, **kwargs):
+        seen_bodies.append(body)
+        return RelevanceResult(score=10, rationale="x")
+
+    monkeypatch.setattr(ai_review_tasks, "score_document_relevance", _fake_score)
+
+    await ai_review_tasks.run_ai_review(case.id, db_session)
+
+    assert len(seen_bodies) == 1
+    assert "Never share your password with anyone." in seen_bodies[0]
+
+
 async def test_run_ai_review_scores_all_candidates_and_sets_run_timestamps(db_session, monkeypatch):
     db_session.add(SystemSettings(ai_review_concurrency=2))
     await db_session.commit()

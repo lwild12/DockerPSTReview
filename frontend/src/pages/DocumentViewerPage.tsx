@@ -17,6 +17,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 
+import { getCase } from "../api/cases";
 import { documentPdfUrl, getDocument } from "../api/documents";
 import {
   createRedaction,
@@ -62,6 +63,12 @@ export function DocumentViewerPage() {
   const { data: document, isLoading } = useQuery({
     queryKey: ["document", caseId, documentId],
     queryFn: () => getDocument(caseId, documentId),
+    enabled,
+  });
+
+  const { data: caseData } = useQuery({
+    queryKey: ["case", caseId],
+    queryFn: () => getCase(caseId),
     enabled,
   });
 
@@ -164,7 +171,7 @@ export function DocumentViewerPage() {
 
   const showAttachmentPanel = !!document && (document.doc_type === "attachment" || document.attachment_count > 0);
   const showNearDuplicatesPanel = !!document && !!document.near_duplicate_cluster_id;
-  const showAiRelevancePanel = !!document && !!document.ai_relevance;
+  const showAiRelevancePanel = !!document;
   const showContextPanel =
     !!document &&
     (!!document.thread_id || showAttachmentPanel || showNearDuplicatesPanel || showAiRelevancePanel);
@@ -395,7 +402,13 @@ export function DocumentViewerPage() {
                       reviewSetId={reviewSetId !== "" ? reviewSetId : undefined}
                     />
                   )}
-                  {showAiRelevancePanel && <AiRelevancePanel document={document} />}
+                  {showAiRelevancePanel && (
+                    <AiRelevancePanel
+                      caseId={caseId}
+                      document={document}
+                      canRun={caseData?.my_role === "admin"}
+                    />
+                  )}
                 </Stack>
               </Grid.Col>
             )}

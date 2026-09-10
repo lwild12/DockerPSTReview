@@ -1,4 +1,5 @@
 import { apiFetch } from "./client";
+import type { DocumentAiRelevance } from "./documents";
 
 export interface AiReviewSummary {
   criteria: string;
@@ -37,4 +38,14 @@ export async function runAiReview(
     method: "POST",
     body: JSON.stringify({ rescore_all: rescoreAll }),
   });
+}
+
+export async function runAiReviewForDocument(
+  caseId: string,
+  documentId: string,
+): Promise<DocumentAiRelevance> {
+  return apiFetch<DocumentAiRelevance>(
+    `/cases/${caseId}/ai-review/documents/${documentId}/run`,
+    { method: "POST" },
+  );
 }

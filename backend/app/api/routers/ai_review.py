@@ -12,10 +12,13 @@ from app.auth.dependencies import (
 from app.db import get_db
 from app.models.ai_review import AiRelevanceStatus, DocumentAiRelevance
 from app.models.case import Case, CaseMembership
+from app.models.document import Document
 from app.models.system_settings import SystemSettings
 from app.schemas.ai_review import AiReviewCriteriaUpdate, AiReviewRunRequest, AiReviewSummary
+from app.schemas.document import DocumentAiRelevanceRead
+from app.services.encryption import decrypt
 from app.services.review_candidates import get_review_candidate_document_ids
-from app.tasks.ai_review_tasks import run_ai_review_task
+from app.tasks.ai_review_tasks import _score_one_document, run_ai_review_task
 
 router = APIRouter(prefix="/cases/{case_id}/ai-review", tags=["ai-review"])
 
@@ -60,6 +63,20 @@ async def _get_case_or_404(case_id: uuid.UUID, db: AsyncSession) -> Case:
     return case
 
 
+async def _get_configured_system_settings_or_400(db: AsyncSession) -> SystemSettings:
+    system_settings = (await db.execute(select(SystemSettings).limit(1))).scalar_one_or_none()
+    if (
+        not system_settings
+        or not system_settings.ollama_base_url
+        or not system_settings.ollama_model
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="Ollama is not configured -- set the endpoint URL and model in Admin settings",
+        )
+    return system_settings
+
+
 @router.get("", response_model=AiReviewSummary)
 async def get_ai_review_summary(
     case_id: uuid.UUID,
@@ -92,17 +109,43 @@ async def run_ai_review(
     db: AsyncSession = Depends(get_db),
 ):
     case = await _get_case_or_404(case_id, db)
-
-    system_settings = (await db.execute(select(SystemSettings).limit(1))).scalar_one_or_none()
-    if (
-        not system_settings
-        or not system_settings.ollama_base_url
-        or not system_settings.ollama_model
-    ):
-        raise HTTPException(
-            status_code=400,
-            detail="Ollama is not configured -- set the endpoint URL and model in Admin settings",
-        )
+    await _get_configured_system_settings_or_400(db)
 
     run_ai_review_task.delay(str(case_id), rescore_all=payload.rescore_all)
     return await _summary(case, db)
+
+
+@router.post("/documents/{document_id}/run", response_model=DocumentAiRelevanceRead)
+async def run_ai_review_for_document(
+    case_id: uuid.UUID,
+    document_id: uuid.UUID,
+    _membership: CaseMembership = Depends(require_case_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Score a single document immediately, synchronously (not dispatched
+    to Celery) -- for an admin testing the case's criteria or the Ollama
+    setup against one document at a time, rather than kicking off a full
+    case run for every iteration."""
+    case = await _get_case_or_404(case_id, db)
+    document = await db.get(Document, document_id)
+    if document is None or document.case_id != case_id:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    system_settings = await _get_configured_system_settings_or_400(db)
+    api_key = (
+        decrypt(system_settings.ollama_api_key_encrypted)
+        if system_settings.ollama_api_key_encrypted
+        else ""
+    )
+
+    await _score_one_document(
+        document_id,
+        criteria=case.ai_review_criteria,
+        criteria_snapshot=case.ai_review_criteria,
+        base_url=system_settings.ollama_base_url,
+        model=system_settings.ollama_model,
+        api_key=api_key,
+        db=db,
+    )
+    await db.refresh(document, attribute_names=["ai_relevance"])
+    return DocumentAiRelevanceRead.model_validate(document.ai_relevance)
