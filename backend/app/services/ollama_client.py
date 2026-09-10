@@ -4,10 +4,30 @@ import json
 import logging
 import re
 from dataclasses import dataclass
+from logging import FileHandler
 
 import httpx
 
 logger = logging.getLogger(__name__)
+
+# `docker compose logs` has proven awkward for admins to actually find these
+# lines in (they're interleaved with everything else the backend/worker
+# containers log, and there are two containers to check depending on which
+# entry point triggered the scoring). Mirror the same INFO-level preview to
+# a plain file at a fixed path -- docker-compose.yml bind-mounts this to
+# ollama.log next to the compose file, so `tail -f ollama.log` on the host
+# works regardless of which container is doing the scoring. Best-effort:
+# outside the container (local dev, tests) this path doesn't exist and
+# logging still works fine via the normal handler.
+_LOG_FILE_PATH = "/var/log/ollama.log"
+try:
+    _file_handler = FileHandler(_LOG_FILE_PATH)
+except OSError:
+    pass
+else:
+    _file_handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+    _file_handler.setLevel(logging.INFO)
+    logger.addHandler(_file_handler)
 
 # Named constant rather than inline so it's easy to iterate on post-launch
 # without touching the request/parsing logic around it. There's no eval

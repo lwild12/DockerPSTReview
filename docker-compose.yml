@@ -50,6 +50,7 @@ services:
       ENABLE_API_DOCS: ${ENABLE_API_DOCS:-false}
     volumes:
       - case_storage:/data
+      - ./ollama.log:/var/log/ollama.log
     depends_on:
       postgres:
         condition: service_healthy
@@ -77,6 +78,7 @@ services:
       PARSE_CONCURRENCY: ${PARSE_CONCURRENCY:-8}
     volumes:
       - case_storage:/data
+      - ./ollama.log:/var/log/ollama.log
     depends_on:
       postgres:
         condition: service_healthy

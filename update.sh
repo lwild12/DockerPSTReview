@@ -230,6 +230,13 @@ if [ -f .env.example ]; then
   fi
 fi
 
+# docker-compose.yml bind-mounts this file into the backend/worker
+# containers for Ollama request/response logging -- a bind mount of a
+# path that doesn't exist yet on the host gets created as a directory
+# instead of a file, so touch it into existence first (a no-op if it's
+# already there from a previous run).
+touch ollama.log
+
 log "Rebuilding changed images..."
 docker compose build
 
