@@ -42,26 +42,43 @@ fi
 # production build).
 export COMPOSE_FILE=docker-compose.yml
 
-if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
-  warn "You have uncommitted local changes to tracked files in $REPO_DIR."
-  warn "git pull will fail below if they conflict with the update -- 'git stash' first if that happens."
+# Skip straight past the fetch/pull on the re-exec'd pass below -- it was
+# just done by the process that exec'd into this one.
+if [ -z "${_UPDATE_SH_REEXECED:-}" ]; then
+  if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
+    warn "You have uncommitted local changes to tracked files in $REPO_DIR."
+    warn "git pull will fail below if they conflict with the update -- 'git stash' first if that happens."
+  fi
+
+  log "Fetching latest code..."
+  git fetch origin main
+
+  # The repo's GitHub-reported default branch has at times pointed at a
+  # feature branch instead of main, which a plain `git clone`/checkout with
+  # no explicit branch would have followed -- pin to main explicitly so an
+  # affected checkout self-heals here instead of quietly tracking the wrong
+  # branch on every update.
+  CURRENT_BRANCH="$(git symbolic-ref --short -q HEAD || echo "")"
+  if [ "$CURRENT_BRANCH" != "main" ]; then
+    warn "This checkout is on branch '${CURRENT_BRANCH:-<detached HEAD>}', not 'main' -- switching to main."
+    git checkout main 2>/dev/null || git checkout -B main origin/main
+  fi
+
+  git pull --ff-only origin main
+
+  # The pull above just overwrote this very file on disk, but bash already
+  # had the pre-pull copy open and keeps executing *that* in memory -- a
+  # checkout replaces the file rather than editing it in place, so the
+  # running process never notices. That silently skipped a change to this
+  # script itself once already (a `touch` added ahead of the new
+  # docker-compose.yml bind mount it was meant to prepare for -- the mount
+  # picked up the fresh compose file just fine and created a directory in
+  # the touch's place). Re-exec once against the just-pulled file so
+  # anything this same update changes about update.sh takes effect
+  # immediately instead of silently waiting for the *next* run.
+  export _UPDATE_SH_REEXECED=1
+  exec bash "$REPO_DIR/update.sh" "$@"
 fi
-
-log "Fetching latest code..."
-git fetch origin main
-
-# The repo's GitHub-reported default branch has at times pointed at a
-# feature branch instead of main, which a plain `git clone`/checkout with
-# no explicit branch would have followed -- pin to main explicitly so an
-# affected checkout self-heals here instead of quietly tracking the wrong
-# branch on every update.
-CURRENT_BRANCH="$(git symbolic-ref --short -q HEAD || echo "")"
-if [ "$CURRENT_BRANCH" != "main" ]; then
-  warn "This checkout is on branch '${CURRENT_BRANCH:-<detached HEAD>}', not 'main' -- switching to main."
-  git checkout main 2>/dev/null || git checkout -B main origin/main
-fi
-
-git pull --ff-only origin main
 
 set_env_var() {
   # set_env_var KEY VALUE -- updates KEY in .env in place, or appends it
