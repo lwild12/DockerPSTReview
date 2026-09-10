@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.routers.documents import _TAGS_OPTION, _list_item
+from app.api.routers.documents import _AI_RELEVANCE_OPTION, _TAGS_OPTION, _list_item
 from app.auth.dependencies import require_case_admin, require_case_member
 from app.db import get_db
 from app.models.case import Case, CaseMembership
@@ -101,6 +101,6 @@ async def list_near_duplicate_cluster_documents(
         select(Document)
         .where(Document.near_duplicate_cluster_id == cluster_id, Document.case_id == case_id)
         .order_by(Document.subject)
-        .options(_TAGS_OPTION)
+        .options(_TAGS_OPTION, _AI_RELEVANCE_OPTION)
     )
     return [_list_item(d) for d in result.scalars().unique().all()]

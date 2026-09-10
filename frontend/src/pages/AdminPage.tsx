@@ -5,6 +5,7 @@ import {
   Code,
   Container,
   Group,
+  NumberInput,
   PasswordInput,
   Stack,
   Table,
@@ -116,6 +117,84 @@ function OidcSettings({ settings }: { settings: SystemSettings }) {
         <Text c="red" size="sm">
           Couldn't enable OIDC — make sure the issuer URL, client ID, and client secret are all
           saved first.
+        </Text>
+      )}
+    </Stack>
+  );
+}
+
+function OllamaSettings({ settings }: { settings: SystemSettings }) {
+  const queryClient = useQueryClient();
+  const [baseUrl, setBaseUrl] = useState(settings.ollama_base_url);
+  const [model, setModel] = useState(settings.ollama_model);
+  const [apiKey, setApiKey] = useState("");
+  const [concurrency, setConcurrency] = useState<number | string>(settings.ai_review_concurrency);
+  const [initialized, setInitialized] = useState(false);
+
+  useEffect(() => {
+    if (initialized) return;
+    setBaseUrl(settings.ollama_base_url);
+    setModel(settings.ollama_model);
+    setConcurrency(settings.ai_review_concurrency);
+    setInitialized(true);
+  }, [settings, initialized]);
+
+  const saveMutation = useMutation({
+    mutationFn: () =>
+      updateSystemSettings({
+        ollama_base_url: baseUrl,
+        ollama_model: model,
+        ai_review_concurrency: typeof concurrency === "number" ? concurrency : 1,
+        ...(apiKey ? { ollama_api_key: apiKey } : {}),
+      }),
+    onSuccess: () => {
+      setApiKey("");
+      queryClient.invalidateQueries({ queryKey: ["admin-settings"] });
+    },
+  });
+
+  return (
+    <Stack gap="sm" maw={520}>
+      <Text size="sm" c="dimmed">
+        Connects to an Ollama-compatible server to pre-score documents for relevance during case
+        review. Scores are advisory only and never final.
+      </Text>
+      <TextInput
+        label="Ollama endpoint URL"
+        placeholder="http://localhost:11434"
+        value={baseUrl}
+        onChange={(e) => setBaseUrl(e.currentTarget.value)}
+      />
+      <TextInput
+        label="Model"
+        placeholder="llama3.1"
+        value={model}
+        onChange={(e) => setModel(e.currentTarget.value)}
+      />
+      <PasswordInput
+        label="API key"
+        description="Optional — most self-hosted Ollama servers don't require one."
+        placeholder={settings.ollama_api_key_set ? "•••••••• (configured — leave blank to keep)" : "Not set"}
+        value={apiKey}
+        onChange={(e) => setApiKey(e.currentTarget.value)}
+      />
+      <NumberInput
+        label="Concurrent scoring requests"
+        description="How many documents to score at once. Tune to what your Ollama server can handle."
+        min={1}
+        value={concurrency}
+        onChange={setConcurrency}
+      />
+      <Button
+        variant="light"
+        loading={saveMutation.isPending}
+        onClick={() => saveMutation.mutate()}
+      >
+        Save Ollama settings
+      </Button>
+      {saveMutation.isError && (
+        <Text c="red" size="sm">
+          Couldn't save — check the values and try again.
         </Text>
       )}
     </Stack>
@@ -266,6 +345,11 @@ export function AdminPage() {
         OIDC login
       </Title>
       {settings && <OidcSettings settings={settings} />}
+
+      <Title order={4} mt="xl" mb="sm">
+        AI pre-review (Ollama)
+      </Title>
+      {settings && <OllamaSettings settings={settings} />}
     </Container>
   );
 }

@@ -1,11 +1,45 @@
-import { Badge, Checkbox, Table, Text } from "@mantine/core";
+import { Badge, Checkbox, Table, Text, Tooltip } from "@mantine/core";
 import { IconPaperclip } from "@tabler/icons-react";
 import { useNavigate, useParams } from "react-router-dom";
 
-import type { DocumentListItem } from "../api/documents";
+import type { DocumentAiRelevance, DocumentListItem } from "../api/documents";
 import { childrenByParent, groupIntoFamilies } from "../lib/documentFamilies";
 
 const DEDUP_COLOR: Record<string, string> = { primary: "gray", duplicate: "orange" };
+
+function aiRelevanceScoreColor(score: number): string {
+  if (score >= 70) return "green";
+  if (score >= 40) return "yellow";
+  return "gray";
+}
+
+function AiRelevanceBadge({ relevance }: { relevance: DocumentAiRelevance | null }) {
+  if (!relevance) return null;
+  if (relevance.status === "queued" || relevance.status === "running") {
+    return (
+      <Badge size="sm" color="blue" variant="light">
+        scoring…
+      </Badge>
+    );
+  }
+  if (relevance.status === "failed") {
+    return (
+      <Tooltip label={relevance.error || "AI scoring failed"}>
+        <Badge size="sm" color="red" variant="light">
+          scoring failed
+        </Badge>
+      </Tooltip>
+    );
+  }
+  if (relevance.score === null) return null;
+  return (
+    <Tooltip label={relevance.rationale} multiline maw={300}>
+      <Badge size="sm" color={aiRelevanceScoreColor(relevance.score)}>
+        {relevance.score}
+      </Badge>
+    </Tooltip>
+  );
+}
 
 const getId = (d: DocumentListItem) => d.id;
 const getParentId = (d: DocumentListItem) => d.parent_document_id;
@@ -49,6 +83,7 @@ export function DocumentTable({
           <Table.Th>Sent</Table.Th>
           <Table.Th>Type</Table.Th>
           <Table.Th>Status</Table.Th>
+          <Table.Th>AI relevance</Table.Th>
           <Table.Th>Tags</Table.Th>
         </Table.Tr>
       </Table.Thead>
@@ -126,6 +161,9 @@ export function DocumentTable({
                   similar
                 </Badge>
               )}
+            </Table.Td>
+            <Table.Td onClick={() => navigate(`/cases/${caseId}/documents/${doc.id}`)}>
+              <AiRelevanceBadge relevance={doc.ai_relevance} />
             </Table.Td>
             <Table.Td onClick={() => navigate(`/cases/${caseId}/documents/${doc.id}`)}>
               {doc.tags.map((tag) => (

@@ -3,8 +3,20 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict
 
+from app.models.ai_review import AiRelevanceStatus
 from app.models.document import DedupStatus, DocType, OcrStatus
 from app.schemas.tag import TagRead
+
+
+class DocumentAiRelevanceRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    status: AiRelevanceStatus
+    score: int | None
+    rationale: str
+    error: str
+    criteria_snapshot: str
+    scored_at: datetime | None
 
 
 class DocumentListItem(BaseModel):
@@ -26,6 +38,7 @@ class DocumentListItem(BaseModel):
     is_inclusive_email: bool = True
     near_duplicate_cluster_id: uuid.UUID | None = None
     tags: list[TagRead] = []
+    ai_relevance: DocumentAiRelevanceRead | None = None
 
 
 class DocumentDetail(BaseModel):
@@ -67,6 +80,7 @@ class DocumentDetail(BaseModel):
     is_inclusive_email: bool = True
     near_duplicate_cluster_id: uuid.UUID | None = None
     tags: list[TagRead] = []
+    ai_relevance: DocumentAiRelevanceRead | None = None
 
 
 class AttachmentSummary(BaseModel):

@@ -81,6 +81,10 @@ def _to_settings_read(row: SystemSettings) -> SystemSettingsRead:
         oidc_client_id=row.oidc_client_id,
         oidc_client_secret_set=bool(row.oidc_client_secret_encrypted),
         oidc_display_name=row.oidc_display_name,
+        ollama_base_url=row.ollama_base_url,
+        ollama_model=row.ollama_model,
+        ollama_api_key_set=bool(row.ollama_api_key_encrypted),
+        ai_review_concurrency=row.ai_review_concurrency,
         updated_at=row.updated_at,
         updated_by_id=row.updated_by_id,
     )
@@ -126,6 +130,19 @@ async def update_system_settings(
                 detail="Set an issuer URL, client ID, and client secret before enabling OIDC",
             )
         row.oidc_enabled = payload.oidc_enabled
+
+    if payload.ollama_base_url is not None:
+        row.ollama_base_url = payload.ollama_base_url
+    if payload.ollama_model is not None:
+        row.ollama_model = payload.ollama_model
+    if payload.ollama_api_key is not None:
+        row.ollama_api_key_encrypted = (
+            encrypt(payload.ollama_api_key) if payload.ollama_api_key else ""
+        )
+    if payload.ai_review_concurrency is not None:
+        if payload.ai_review_concurrency < 1:
+            raise HTTPException(status_code=400, detail="ai_review_concurrency must be at least 1")
+        row.ai_review_concurrency = payload.ai_review_concurrency
 
     row.updated_by_id = current.id
     await db.commit()

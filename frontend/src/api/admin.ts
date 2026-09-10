@@ -18,6 +18,10 @@ export interface SystemSettings {
   oidc_client_id: string;
   oidc_client_secret_set: boolean;
   oidc_display_name: string;
+  ollama_base_url: string;
+  ollama_model: string;
+  ollama_api_key_set: boolean;
+  ai_review_concurrency: number;
   updated_at: string;
   updated_by_id: string | null;
 }
@@ -31,6 +35,10 @@ export interface SystemSettingsUpdate {
   oidc_client_id?: string;
   oidc_client_secret?: string;
   oidc_display_name?: string;
+  ollama_base_url?: string;
+  ollama_model?: string;
+  ollama_api_key?: string;
+  ai_review_concurrency?: number;
 }
 
 export async function listAdminUsers(): Promise<AdminUser[]> {

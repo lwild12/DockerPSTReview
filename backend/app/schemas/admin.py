@@ -29,6 +29,10 @@ class SystemSettingsRead(BaseModel):
     oidc_client_id: str
     oidc_client_secret_set: bool
     oidc_display_name: str
+    ollama_base_url: str
+    ollama_model: str
+    ollama_api_key_set: bool
+    ai_review_concurrency: int
     updated_at: datetime
     updated_by_id: uuid.UUID | None
 
@@ -43,3 +47,8 @@ class SystemSettingsUpdate(BaseModel):
     # Write-only. Omit to leave the stored secret unchanged; pass "" to clear it.
     oidc_client_secret: str | None = None
     oidc_display_name: str | None = None
+    ollama_base_url: str | None = None
+    ollama_model: str | None = None
+    # Write-only, same convention as oidc_client_secret above.
+    ollama_api_key: str | None = None
+    ai_review_concurrency: int | None = None

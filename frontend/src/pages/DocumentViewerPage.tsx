@@ -31,6 +31,7 @@ import {
   type ReviewStatus,
 } from "../api/reviewSets";
 import { listRedactionReasonPresets } from "../api/userPresets";
+import { AiRelevancePanel } from "../components/AiRelevancePanel";
 import { AttachmentPanel } from "../components/AttachmentPanel";
 import { CodingForm } from "../components/CodingForm";
 import { NearDuplicatesPanel } from "../components/NearDuplicatesPanel";
@@ -163,8 +164,10 @@ export function DocumentViewerPage() {
 
   const showAttachmentPanel = !!document && (document.doc_type === "attachment" || document.attachment_count > 0);
   const showNearDuplicatesPanel = !!document && !!document.near_duplicate_cluster_id;
+  const showAiRelevancePanel = !!document && !!document.ai_relevance;
   const showContextPanel =
-    !!document && (!!document.thread_id || showAttachmentPanel || showNearDuplicatesPanel);
+    !!document &&
+    (!!document.thread_id || showAttachmentPanel || showNearDuplicatesPanel || showAiRelevancePanel);
 
   return (
     <Container size="xl" py="xl">
@@ -376,6 +379,7 @@ export function DocumentViewerPage() {
                       reviewSetId={reviewSetId !== "" ? reviewSetId : undefined}
                     />
                   )}
+                  {showAiRelevancePanel && <AiRelevancePanel document={document} />}
                 </Stack>
               </Grid.Col>
             )}

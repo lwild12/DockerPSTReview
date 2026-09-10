@@ -1,3 +1,4 @@
+from app.models.ai_review import AiRelevanceStatus, DocumentAiRelevance
 from app.models.audit import AuditLog
 from app.models.case import Case, CaseMembership, CaseRole, Custodian
 from app.models.coding import CodingField, CodingFieldType, DocumentCodingValue
@@ -12,6 +13,7 @@ from app.models.user import User
 from app.models.user_presets import UserRedactionReasonPreset, UserTagPreset
 
 __all__ = [
+    "AiRelevanceStatus",
     "AuditLog",
     "Case",
     "CaseMembership",
@@ -22,6 +24,7 @@ __all__ = [
     "DedupStatus",
     "DocType",
     "Document",
+    "DocumentAiRelevance",
     "DocumentCodingValue",
     "DocumentTag",
     "ExportDocumentBates",

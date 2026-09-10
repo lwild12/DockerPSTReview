@@ -8,17 +8,25 @@ from sqlalchemy.orm import selectinload
 
 from app.auth.dependencies import require_case_member
 from app.db import get_db
+from app.models.ai_review import AiRelevanceStatus, DocumentAiRelevance
 from app.models.base import orm_columns
 from app.models.case import CaseMembership
 from app.models.document import DedupStatus, DocType, Document, Thread
 from app.models.tag import DocumentTag
-from app.schemas.document import AttachmentSummary, DocumentDetail, DocumentListItem, ThreadSibling
+from app.schemas.document import (
+    AttachmentSummary,
+    DocumentAiRelevanceRead,
+    DocumentDetail,
+    DocumentListItem,
+    ThreadSibling,
+)
 from app.schemas.tag import TagRead
 
 router = APIRouter(prefix="/cases/{case_id}/documents", tags=["documents"])
 threads_router = APIRouter(prefix="/cases/{case_id}/threads", tags=["documents"])
 
 _TAGS_OPTION = selectinload(Document.tags).selectinload(DocumentTag.tag)
+_AI_RELEVANCE_OPTION = selectinload(Document.ai_relevance)
 
 
 def _tags_of(document: Document) -> list[TagRead]:
@@ -29,11 +37,18 @@ def _tags_of(document: Document) -> list[TagRead]:
     return [TagRead.model_validate(dt.tag) for dt in document.tags]
 
 
+def _ai_relevance_of(document: Document) -> DocumentAiRelevanceRead | None:
+    if document.ai_relevance is None:
+        return None
+    return DocumentAiRelevanceRead.model_validate(document.ai_relevance)
+
+
 def _list_item(document: Document) -> DocumentListItem:
     return DocumentListItem.model_validate(
         {
             **orm_columns(document),
             "tags": _tags_of(document),
+            "ai_relevance": _ai_relevance_of(document),
             "has_native_file": bool(document.native_file_path),
         }
     )
@@ -44,6 +59,7 @@ def _detail(document: Document, attachment_count: int = 0) -> DocumentDetail:
         {
             **orm_columns(document),
             "tags": _tags_of(document),
+            "ai_relevance": _ai_relevance_of(document),
             "has_native_file": bool(document.native_file_path),
             "attachment_count": attachment_count,
         }
@@ -60,13 +76,19 @@ async def list_documents(
     tag_id: uuid.UUID | None = None,
     is_inclusive_email: bool | None = None,
     near_duplicate_cluster_id: uuid.UUID | None = None,
+    ai_relevance_status: AiRelevanceStatus | None = None,
+    ai_relevance_min_score: int | None = Query(None, ge=0, le=100),
     q: str | None = None,
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=500),
     _membership: CaseMembership = Depends(require_case_member),
     db: AsyncSession = Depends(get_db),
 ):
-    stmt = select(Document).where(Document.case_id == case_id).options(_TAGS_OPTION)
+    stmt = (
+        select(Document)
+        .where(Document.case_id == case_id)
+        .options(_TAGS_OPTION, _AI_RELEVANCE_OPTION)
+    )
     if doc_type is not None:
         stmt = stmt.where(Document.doc_type == doc_type)
     if custodian_id is not None:
@@ -79,6 +101,12 @@ async def list_documents(
         stmt = stmt.where(Document.is_inclusive_email == is_inclusive_email)
     if near_duplicate_cluster_id is not None:
         stmt = stmt.where(Document.near_duplicate_cluster_id == near_duplicate_cluster_id)
+    if ai_relevance_status is not None or ai_relevance_min_score is not None:
+        stmt = stmt.join(DocumentAiRelevance, DocumentAiRelevance.document_id == Document.id)
+        if ai_relevance_status is not None:
+            stmt = stmt.where(DocumentAiRelevance.status == ai_relevance_status)
+        if ai_relevance_min_score is not None:
+            stmt = stmt.where(DocumentAiRelevance.score >= ai_relevance_min_score)
     if tag_id is not None:
         stmt = stmt.join(DocumentTag, DocumentTag.document_id == Document.id).where(
             DocumentTag.tag_id == tag_id
@@ -129,7 +157,7 @@ async def get_document(
     stmt = (
         select(Document)
         .where(Document.id == document_id, Document.case_id == case_id)
-        .options(_TAGS_OPTION)
+        .options(_TAGS_OPTION, _AI_RELEVANCE_OPTION)
     )
     result = await db.execute(stmt)
     document = result.scalars().unique().one_or_none()

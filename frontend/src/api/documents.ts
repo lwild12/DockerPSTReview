@@ -4,6 +4,16 @@ import type { TagRead } from "./tags";
 export type DocType = "email" | "attachment" | "calendar" | "contact";
 export type DedupStatus = "primary" | "duplicate";
 export type OcrStatus = "not_applicable" | "completed" | "failed";
+export type AiRelevanceStatus = "queued" | "running" | "completed" | "failed";
+
+export interface DocumentAiRelevance {
+  status: AiRelevanceStatus;
+  score: number | null;
+  rationale: string;
+  error: string;
+  criteria_snapshot: string;
+  scored_at: string | null;
+}
 
 export interface DocumentListItem {
   id: string;
@@ -22,6 +32,7 @@ export interface DocumentListItem {
   is_inclusive_email: boolean;
   near_duplicate_cluster_id: string | null;
   tags: TagRead[];
+  ai_relevance: DocumentAiRelevance | null;
 }
 
 export interface AttachmentSummary {
@@ -72,6 +83,8 @@ export interface DocumentFilters {
   tag_id?: string;
   is_inclusive_email?: boolean;
   near_duplicate_cluster_id?: string;
+  ai_relevance_status?: AiRelevanceStatus;
+  ai_relevance_min_score?: number;
   q?: string;
   page?: number;
   page_size?: number;

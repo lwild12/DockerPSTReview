@@ -52,15 +52,11 @@ async def test_superuser_can_list_and_promote_users(client, db_session):
     emails = {u["email"] for u in listed.json()}
     assert {"admin@example.com", "other@example.com"} <= emails
 
-    promoted = await client.patch(
-        f"/api/admin/users/{other['id']}", json={"is_superuser": True}
-    )
+    promoted = await client.patch(f"/api/admin/users/{other['id']}", json={"is_superuser": True})
     assert promoted.status_code == 200
     assert promoted.json()["is_superuser"] is True
 
-    deactivated = await client.patch(
-        f"/api/admin/users/{other['id']}", json={"is_active": False}
-    )
+    deactivated = await client.patch(f"/api/admin/users/{other['id']}", json={"is_active": False})
     assert deactivated.status_code == 200
     assert deactivated.json()["is_active"] is False
 
@@ -81,9 +77,7 @@ async def test_superuser_cannot_deactivate_or_demote_self(client, db_session):
 
 async def test_update_missing_user_returns_404(client, db_session):
     await _make_superuser(client, db_session, "admin3@example.com")
-    resp = await client.patch(
-        f"/api/admin/users/{uuid.uuid4()}", json={"is_active": False}
-    )
+    resp = await client.patch(f"/api/admin/users/{uuid.uuid4()}", json={"is_active": False})
     assert resp.status_code == 404
 
 
@@ -104,3 +98,46 @@ async def test_get_and_update_system_settings(client, db_session):
     # the setting persists across requests, not just echoed back once
     refetched = await client.get("/api/admin/settings")
     assert refetched.json()["enable_api_docs"] is True
+
+
+async def test_get_and_update_ollama_settings(client, db_session, monkeypatch):
+    from cryptography.fernet import Fernet
+
+    from app.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "secret_encryption_key", Fernet.generate_key().decode())
+
+    await _make_superuser(client, db_session, "admin5@example.com")
+
+    initial = await client.get("/api/admin/settings")
+    body = initial.json()
+    assert body["ollama_base_url"] == ""
+    assert body["ollama_api_key_set"] is False
+    assert body["ai_review_concurrency"] == 1
+
+    updated = await client.patch(
+        "/api/admin/settings",
+        json={
+            "ollama_base_url": "http://ollama.local:11434",
+            "ollama_model": "llama3.1",
+            "ollama_api_key": "secret-token",
+            "ai_review_concurrency": 3,
+        },
+    )
+    assert updated.status_code == 200
+    body = updated.json()
+    assert body["ollama_base_url"] == "http://ollama.local:11434"
+    assert body["ollama_model"] == "llama3.1"
+    # the key itself is never echoed back, only whether one is set
+    assert "ollama_api_key" not in body
+    assert body["ollama_api_key_set"] is True
+    assert body["ai_review_concurrency"] == 3
+
+    cleared = await client.patch("/api/admin/settings", json={"ollama_api_key": ""})
+    assert cleared.json()["ollama_api_key_set"] is False
+
+
+async def test_ai_review_concurrency_must_be_positive(client, db_session):
+    await _make_superuser(client, db_session, "admin6@example.com")
+    resp = await client.patch("/api/admin/settings", json={"ai_review_concurrency": 0})
+    assert resp.status_code == 400

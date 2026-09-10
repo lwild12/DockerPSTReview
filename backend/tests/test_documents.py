@@ -1,5 +1,6 @@
 import uuid
 
+from app.models.ai_review import AiRelevanceStatus, DocumentAiRelevance
 from app.models.document import DedupStatus, DocType, Document, Thread
 from tests.conftest import register_and_login
 
@@ -246,3 +247,53 @@ async def test_list_documents_pagination_covers_every_row_when_sort_keys_tie(cli
 
     assert set(seen_ids) == seeded_ids
     assert len(seen_ids) == len(seeded_ids), "a document was returned more than once across pages"
+
+
+async def test_list_and_detail_embed_ai_relevance(client, db_session):
+    _, case_id = await _setup_case(client)
+    scored = await _seed_document(db_session, case_id, subject="Scored doc")
+    unscored = await _seed_document(db_session, case_id, subject="Unscored doc")
+    db_session.add(
+        DocumentAiRelevance(
+            document_id=scored.id,
+            status=AiRelevanceStatus.completed,
+            score=85,
+            rationale="Directly on point.",
+            criteria_snapshot="Q3 budget",
+        )
+    )
+    await db_session.commit()
+
+    listed = await client.get(f"/api/cases/{case_id}/documents")
+    by_id = {d["id"]: d for d in listed.json()}
+    assert by_id[str(scored.id)]["ai_relevance"]["score"] == 85
+    assert by_id[str(scored.id)]["ai_relevance"]["status"] == "completed"
+    assert by_id[str(unscored.id)]["ai_relevance"] is None
+
+    detail = await client.get(f"/api/cases/{case_id}/documents/{scored.id}")
+    assert detail.json()["ai_relevance"]["rationale"] == "Directly on point."
+
+
+async def test_list_documents_filters_by_ai_relevance(client, db_session):
+    _, case_id = await _setup_case(client)
+    high = await _seed_document(db_session, case_id, subject="High relevance")
+    low = await _seed_document(db_session, case_id, subject="Low relevance")
+    await _seed_document(db_session, case_id, subject="Unscored")
+
+    db_session.add_all(
+        [
+            DocumentAiRelevance(document_id=high.id, status=AiRelevanceStatus.completed, score=90),
+            DocumentAiRelevance(document_id=low.id, status=AiRelevanceStatus.completed, score=5),
+        ]
+    )
+    await db_session.commit()
+
+    by_status = await client.get(
+        f"/api/cases/{case_id}/documents", params={"ai_relevance_status": "completed"}
+    )
+    assert {d["id"] for d in by_status.json()} == {str(high.id), str(low.id)}
+
+    by_min_score = await client.get(
+        f"/api/cases/{case_id}/documents", params={"ai_relevance_min_score": 50}
+    )
+    assert {d["id"] for d in by_min_score.json()} == {str(high.id)}

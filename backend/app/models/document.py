@@ -142,3 +142,6 @@ class Document(UUIDPKMixin, TimestampMixin, Base):
     redactions: Mapped[list["Redaction"]] = relationship(  # noqa: F821
         back_populates="document", cascade="all, delete-orphan"
     )
+    ai_relevance: Mapped["DocumentAiRelevance | None"] = relationship(  # noqa: F821
+        back_populates="document", cascade="all, delete-orphan", uselist=False
+    )
