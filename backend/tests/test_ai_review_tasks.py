@@ -88,6 +88,24 @@ def test_text_for_scoring_falls_back_to_html_when_body_text_empty():
     assert "Only available as HTML." in ai_review_tasks._text_for_scoring(document)
 
 
+def test_text_for_scoring_falls_back_to_html_when_body_text_is_whitespace_only():
+    # A real email observed in production had a text/plain MIME part
+    # containing only "\n" -- a near-empty placeholder some mail clients
+    # write alongside the real HTML-formatted content. That string is
+    # non-empty, so a plain `if document.body_text:` took it and never
+    # fell back to body_html, sending the model 1 character of body text
+    # (confirmed via the new request-preview log line) for a message with
+    # a full, substantial HTML body.
+    document = Document(
+        id=uuid.uuid4(),
+        case_id=uuid.uuid4(),
+        doc_type=DocType.email,
+        body_text="\n",
+        body_html="<p>The real content is only here.</p>",
+    )
+    assert "The real content is only here." in ai_review_tasks._text_for_scoring(document)
+
+
 def test_text_for_scoring_includes_ocr_text():
     document = Document(
         id=uuid.uuid4(),
