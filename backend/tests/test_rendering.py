@@ -124,6 +124,38 @@ def test_render_email_inline_image_data_uri_is_embedded_in_the_pdf():
     assert images, "the inline image never made it into the rendered PDF"
 
 
+def test_render_email_oversized_inline_image_is_scaled_to_fit_the_page():
+    # Regression test: an inline image's native size reflects the screen it
+    # was composed for, not this page -- a phone photo or an un-downsized
+    # banner can easily be thousands of pixels wide. Unconstrained, WeasyPrint
+    # doesn't shrink it to fit; it renders at native size, overflows the page
+    # edge, and spills onto an extra page.
+    img = Image.new("RGB", (3000, 2000), color="red")
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    data_uri = f"data:image/png;base64,{base64.b64encode(buf.getvalue()).decode()}"
+
+    pdf_bytes = render_email_to_pdf(
+        subject="Big image",
+        sender="a@x.com",
+        recipients_to=["b@x.com"],
+        recipients_cc=[],
+        recipients_bcc=[],
+        sent_at=None,
+        body_text="",
+        body_html=f'<p><img src="{data_uri}"></p>',
+    )
+    with fitz.open(stream=pdf_bytes, filetype="pdf") as doc:
+        assert doc.page_count == 1, "the oversized image spilled onto an extra page"
+        page = doc[0]
+        images = page.get_images(full=True)
+        assert images, "the inline image never made it into the rendered PDF"
+        (xref, *_rest) = images[0]
+        rect = page.get_image_rects(xref)[0]
+        assert rect.width <= page.rect.width, "the image is wider than the page itself"
+        assert rect.x1 <= page.rect.width, "the image overflows past the page's right edge"
+
+
 def test_render_email_data_uri_href_is_still_blocked():
     # Allowing the `data:` scheme for inline images must not also open up
     # `data:text/html` (or similar) as a clickable href -- a known

@@ -8,6 +8,18 @@
   .header-row { margin: 2px 0; }
   .header-label { font-weight: bold; display: inline-block; width: 70px; margin-right: 4px; white-space: nowrap; }
   .body-text { white-space: pre-wrap; }
+  /* An inline image's original width/height (HTML attributes or the
+     sender's own CSS) reflects the screen it was composed for, not this
+     page -- a signature banner or an un-downsized photo can easily be
+     wider than the printable page, which WeasyPrint doesn't shrink to
+     fit; it just overflows the page edge. Constrain to the page's
+     content width instead. `max-width`/`max-height` here beat a
+     presentational width="" attribute on the same element (CSS always
+     outranks a presentational-hint style), so this doesn't require
+     stripping those attributes first. */
+  .body-html img { max-width: 100% !important; height: auto; }
+  .body-html table { max-width: 100%; }
+  .body-html { overflow-wrap: break-word; }
 </style>
 </head>
 <body>
