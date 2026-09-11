@@ -221,6 +221,18 @@ async def reprocess_import_job(job: PSTImportJob, db: AsyncSession) -> dict:
     }
 
 
+async def _set_reprocess_progress(case_id: uuid.UUID, db: AsyncSession, **fields) -> None:
+    """Merge fields into Case.reprocess_progress and commit immediately, so
+    a concurrent GET sees live state. Always reassigns a new dict rather
+    than mutating in place -- JSONB columns aren't change-tracked on
+    in-place mutation."""
+    case = await db.get(Case, case_id)
+    if case is None:
+        return
+    case.reprocess_progress = {**(case.reprocess_progress or {}), **fields}
+    await db.commit()
+
+
 async def reprocess_case(case_id: uuid.UUID, db: AsyncSession) -> dict:
     """Reprocess every PST previously imported into this case, in place --
     no delete/recreate/re-upload needed to pick up an extraction fix.
@@ -235,9 +247,14 @@ async def reprocess_case(case_id: uuid.UUID, db: AsyncSession) -> dict:
         )
     )
     jobs = list(result.scalars().all())
+    await _set_reprocess_progress(
+        case_id, db, total_jobs=len(jobs), completed_jobs=0, current_job_id=None
+    )
 
     job_summaries: list[dict] = []
     for job in jobs:
+        await _set_reprocess_progress(case_id, db, current_job_id=str(job.id))
+
         if not Path(job.storage_path).is_file():
             job_summaries.append(
                 {
@@ -247,8 +264,7 @@ async def reprocess_case(case_id: uuid.UUID, db: AsyncSession) -> dict:
                     "reason": "the original PST file is no longer on disk",
                 }
             )
-            continue
-        if (job.stats or {}).get("fallback_used"):
+        elif (job.stats or {}).get("fallback_used"):
             job_summaries.append(
                 {
                     "import_job_id": str(job.id),
@@ -261,28 +277,32 @@ async def reprocess_case(case_id: uuid.UUID, db: AsyncSession) -> dict:
                     ),
                 }
             )
-            continue
-        try:
-            stats = await reprocess_import_job(job, db)
-        except Exception as exc:
-            logger.exception("Reprocessing import job %s failed", job.id)
-            await db.rollback()
-            job_summaries.append(
-                {
-                    "import_job_id": str(job.id),
-                    "uploaded_filename": job.uploaded_filename,
-                    "skipped": True,
-                    "reason": f"reprocessing failed: {exc}"[:500],
-                }
-            )
-            continue
-        job_summaries.append(
-            {
-                "import_job_id": str(job.id),
-                "uploaded_filename": job.uploaded_filename,
-                "skipped": False,
-                **stats,
-            }
+        else:
+            try:
+                stats = await reprocess_import_job(job, db)
+            except Exception as exc:
+                logger.exception("Reprocessing import job %s failed", job.id)
+                await db.rollback()
+                job_summaries.append(
+                    {
+                        "import_job_id": str(job.id),
+                        "uploaded_filename": job.uploaded_filename,
+                        "skipped": True,
+                        "reason": f"reprocessing failed: {exc}"[:500],
+                    }
+                )
+            else:
+                job_summaries.append(
+                    {
+                        "import_job_id": str(job.id),
+                        "uploaded_filename": job.uploaded_filename,
+                        "skipped": False,
+                        **stats,
+                    }
+                )
+
+        await _set_reprocess_progress(
+            case_id, db, completed_jobs=len(job_summaries), current_job_id=None
         )
 
     await _run_dedup(case_id, db)
@@ -302,6 +322,7 @@ async def _reprocess_case_standalone(case_id: uuid.UUID) -> None:
                 return
             case.reprocess_last_run_started_at = datetime.now(UTC)
             case.reprocess_last_run_completed_at = None
+            case.reprocess_progress = {}
             await db.commit()
 
             summary = await reprocess_case(case_id, db)

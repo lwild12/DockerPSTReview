@@ -46,6 +46,11 @@ class Case(UUIDPKMixin, TimestampMixin, Base):
         DateTime(timezone=True), nullable=True
     )
     reprocess_last_run_summary: Mapped[dict] = mapped_column(JSONB, default=dict)
+    # Live state for a run in progress: {total_jobs, completed_jobs,
+    # current_job_id}, reset to {} the moment a run starts and populated
+    # once reprocess_case knows how many jobs it'll touch. Lets the UI show
+    # a progress bar without a dedicated streaming channel.
+    reprocess_progress: Mapped[dict] = mapped_column(JSONB, default=dict)
 
     memberships: Mapped[list["CaseMembership"]] = relationship(
         back_populates="case", cascade="all, delete-orphan"

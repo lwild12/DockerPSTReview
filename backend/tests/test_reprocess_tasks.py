@@ -361,3 +361,16 @@ async def test_reprocess_case_skips_job_whose_pst_is_missing(db_session, tmp_pat
     assert len(summary["jobs"]) == 1
     assert summary["jobs"][0]["skipped"] is True
     assert "no longer on disk" in summary["jobs"][0]["reason"]
+
+
+async def test_reprocess_case_tracks_progress(db_session, tmp_path):
+    case, job = await _make_case_and_job(db_session, tmp_path, fallback_used=True)
+
+    await reprocess_case(case.id, db_session)
+
+    refreshed = await db_session.get(Case, case.id)
+    assert refreshed.reprocess_progress == {
+        "total_jobs": 1,
+        "completed_jobs": 1,
+        "current_job_id": None,
+    }

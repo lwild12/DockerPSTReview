@@ -19,7 +19,7 @@ import {
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { getAiReviewSummary, runAiReview, updateAiReviewCriteria } from "../api/aiReview";
@@ -123,13 +123,54 @@ export function CaseDetailPage() {
     queryFn: () => listCustodians(caseId),
     enabled,
   });
+  // Optimistic "just clicked Reprocess" flag: the POST returns (and the
+  // resulting query invalidation refetches) before the Celery task has
+  // necessarily started, so the first poll or two can still show last
+  // run's now-stale started_at/progress. This flag forces the running
+  // state and a reset-to-zero progress bar until a genuinely new
+  // last_run_started_at shows up, so the UI never flashes the old run's
+  // finished state in between.
+  const [justTriggeredReprocess, setJustTriggeredReprocess] = useState(false);
+  const justTriggeredReprocessRef = useRef(justTriggeredReprocess);
+  justTriggeredReprocessRef.current = justTriggeredReprocess;
+  const prevReprocessStartedAtRef = useRef<string | null>(null);
+
+  const { data: reprocessStatus } = useQuery({
+    queryKey: ["reprocess", caseId],
+    queryFn: () => getReprocessStatus(caseId),
+    enabled,
+    refetchInterval: (query) => {
+      const s = query.state.data;
+      const running = s ? !!s.last_run_started_at && !s.last_run_completed_at : false;
+      return running || justTriggeredReprocessRef.current ? 2000 : false;
+    },
+  });
+  useEffect(() => {
+    if (
+      justTriggeredReprocess &&
+      reprocessStatus?.last_run_started_at &&
+      reprocessStatus.last_run_started_at !== prevReprocessStartedAtRef.current
+    ) {
+      setJustTriggeredReprocess(false);
+    }
+  }, [justTriggeredReprocess, reprocessStatus?.last_run_started_at]);
+  const reprocessRunning =
+    justTriggeredReprocess ||
+    Boolean(reprocessStatus?.last_run_started_at && !reprocessStatus?.last_run_completed_at);
+  const reprocessProgress = justTriggeredReprocess
+    ? { total_jobs: 0, completed_jobs: 0, current_job_id: null }
+    : (reprocessStatus?.progress ?? { total_jobs: 0, completed_jobs: 0, current_job_id: null });
   const { data: importJobs } = useQuery({
     queryKey: ["import-jobs", caseId],
     queryFn: () => listImportJobs(caseId),
     enabled,
     refetchInterval: (query) => {
       const jobs = query.state.data ?? [];
-      return jobs.some((j) => !TERMINAL_STATUSES.includes(j.status)) ? 2000 : false;
+      const stillWorking = jobs.some((j) => !TERMINAL_STATUSES.includes(j.status));
+      // A reprocess run doesn't move a job's own status, but it writes
+      // into that job's documents (rendered_pdf_path, ocr_status, ...),
+      // so keep polling while one is running to catch live render counts.
+      return stillWorking || reprocessRunning ? 2000 : false;
     },
   });
   const { data: stats } = useQuery({
@@ -140,7 +181,7 @@ export function CaseDetailPage() {
       const s = query.state.data;
       const stillWorking = (importJobs ?? []).some((j) => !TERMINAL_STATUSES.includes(j.status));
       const stillRendering = s ? s.documents_pending_render > 0 : false;
-      return stillWorking || stillRendering ? 2000 : false;
+      return stillWorking || stillRendering || reprocessRunning ? 2000 : false;
     },
   });
   const { data: reviewSets } = useQuery({
@@ -152,16 +193,6 @@ export function CaseDetailPage() {
     queryKey: ["case-analytics", caseId],
     queryFn: () => getCaseAnalytics(caseId),
     enabled,
-  });
-  const { data: reprocessStatus } = useQuery({
-    queryKey: ["reprocess", caseId],
-    queryFn: () => getReprocessStatus(caseId),
-    enabled,
-    refetchInterval: (query) => {
-      const s = query.state.data;
-      const running = s ? !!s.last_run_started_at && !s.last_run_completed_at : false;
-      return running ? 2000 : false;
-    },
   });
   const { data: aiReview } = useQuery({
     queryKey: ["ai-review", caseId],
@@ -176,9 +207,27 @@ export function CaseDetailPage() {
 
   const isAdmin = caseData?.my_role === "admin";
   const canEdit = caseData?.my_role === "admin" || caseData?.my_role === "reviewer";
-  const reprocessRunning = Boolean(
-    reprocessStatus?.last_run_started_at && !reprocessStatus?.last_run_completed_at,
+
+  const currentReprocessJob = importJobs?.find(
+    (j) => j.id === reprocessProgress.current_job_id,
   );
+  const currentReprocessJobFraction =
+    currentReprocessJob && currentReprocessJob.documents_total > 0
+      ? (currentReprocessJob.documents_rendered + currentReprocessJob.documents_render_failed) /
+        currentReprocessJob.documents_total
+      : 0;
+  const reprocessTotalJobs = reprocessProgress.total_jobs;
+  const reprocessProgressPercent =
+    reprocessTotalJobs > 0
+      ? Math.min(
+          100,
+          Math.round(
+            ((reprocessProgress.completed_jobs + currentReprocessJobFraction) /
+              reprocessTotalJobs) *
+              100,
+          ),
+        )
+      : 0;
 
   const [aiCriteria, setAiCriteria] = useState("");
   const [aiCriteriaInitialized, setAiCriteriaInitialized] = useState(false);
@@ -279,6 +328,8 @@ export function CaseDetailPage() {
   const reprocessMutation = useMutation({
     mutationFn: () => runReprocess(caseId),
     onSuccess: () => {
+      prevReprocessStartedAtRef.current = reprocessStatus?.last_run_started_at ?? null;
+      setJustTriggeredReprocess(true);
       queryClient.invalidateQueries({ queryKey: ["reprocess", caseId] });
       closeReprocessModal();
     },
@@ -312,6 +363,17 @@ export function CaseDetailPage() {
             Members
           </Button>
           {isAdmin && (
+            <Button
+              size="xs"
+              variant="subtle"
+              onClick={openReprocessModal}
+              loading={reprocessRunning}
+              disabled={reprocessRunning}
+            >
+              Reprocess
+            </Button>
+          )}
+          {isAdmin && (
             <Button size="xs" variant="subtle" color="red" onClick={openDeleteModal}>
               Delete case
             </Button>
@@ -321,6 +383,40 @@ export function CaseDetailPage() {
       <Text c="dimmed" mb="xl">
         {caseData?.description}
       </Text>
+
+      {(reprocessStatus?.last_run_started_at || justTriggeredReprocess) && (
+        <Stack gap={4} mb="lg">
+          <Group justify="space-between">
+            <Text size="sm" fw={500}>
+              {reprocessRunning ? "Reprocessing case..." : "Reprocess"}
+            </Text>
+            <Text size="xs" c="dimmed">
+              {reprocessRunning
+                ? `${reprocessProgress.completed_jobs}/${reprocessTotalJobs || "?"} PST(s)`
+                : `Last run completed ${new Date(
+                    reprocessStatus?.last_run_completed_at as string,
+                  ).toLocaleString()}`}
+            </Text>
+          </Group>
+          {reprocessRunning && <Progress value={reprocessProgressPercent} animated />}
+          {!reprocessRunning && reprocessStatus && reprocessStatus.jobs.length > 0 && (
+            <List size="sm">
+              {reprocessStatus.jobs.map((j) => (
+                <List.Item key={j.import_job_id}>
+                  {j.uploaded_filename}:{" "}
+                  {j.skipped
+                    ? `skipped — ${j.reason}`
+                    : `${j.new} new, ${j.updated} updated, ${j.unchanged} unchanged` +
+                      (j.orphans_deleted ? `, ${j.orphans_deleted} redundant removed` : "") +
+                      (j.orphans_kept
+                        ? `, ${j.orphans_kept} redundant kept (had review activity)`
+                        : "")}
+                </List.Item>
+              ))}
+            </List>
+          )}
+        </Stack>
+      )}
 
       <StepCard
         number={1}
@@ -448,63 +544,6 @@ export function CaseDetailPage() {
         ) : (
           <Text size="sm" c="dimmed">
             Not computed yet for this case.
-          </Text>
-        )}
-      </Card>
-
-      <Card withBorder radius="md" p="lg" mb="md">
-        <Group justify="space-between" align="flex-start" mb="xs">
-          <div>
-            <Title order={4}>Reprocess case</Title>
-            <Text size="sm" c="dimmed">
-              Re-runs extraction against the PST(s) already stored for this case — no
-              re-upload needed — so a fixed extraction bug applies to already-imported
-              documents too. Matching documents are updated in place (tags, redactions,
-              coding, and review status are kept) and flagged if their content changed,
-              for another look.
-            </Text>
-          </div>
-          {isAdmin && (
-            <Button
-              size="xs"
-              variant="light"
-              onClick={openReprocessModal}
-              loading={reprocessRunning}
-              disabled={reprocessRunning}
-            >
-              Reprocess
-            </Button>
-          )}
-        </Group>
-        {reprocessStatus?.last_run_started_at ? (
-          <Stack gap={4}>
-            <Text size="sm">
-              {reprocessRunning
-                ? `Running since ${new Date(reprocessStatus.last_run_started_at).toLocaleString()}...`
-                : `Last run completed ${new Date(
-                    reprocessStatus.last_run_completed_at as string,
-                  ).toLocaleString()}`}
-            </Text>
-            {!reprocessRunning && reprocessStatus.jobs.length > 0 && (
-              <List size="sm">
-                {reprocessStatus.jobs.map((j) => (
-                  <List.Item key={j.import_job_id}>
-                    {j.uploaded_filename}:{" "}
-                    {j.skipped
-                      ? `skipped — ${j.reason}`
-                      : `${j.new} new, ${j.updated} updated, ${j.unchanged} unchanged` +
-                        (j.orphans_deleted ? `, ${j.orphans_deleted} redundant removed` : "") +
-                        (j.orphans_kept
-                          ? `, ${j.orphans_kept} redundant kept (had review activity)`
-                          : "")}
-                  </List.Item>
-                ))}
-              </List>
-            )}
-          </Stack>
-        ) : (
-          <Text size="sm" c="dimmed">
-            Never run for this case.
           </Text>
         )}
       </Card>

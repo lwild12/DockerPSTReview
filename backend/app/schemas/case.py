@@ -49,6 +49,12 @@ class CustodianRead(BaseModel):
     email: str
 
 
+class ReprocessProgress(BaseModel):
+    total_jobs: int = 0
+    completed_jobs: int = 0
+    current_job_id: uuid.UUID | None = None
+
+
 class ReprocessSummary(BaseModel):
     last_run_started_at: datetime | None = None
     last_run_completed_at: datetime | None = None
@@ -58,6 +64,7 @@ class ReprocessSummary(BaseModel):
     # updated, unchanged, orphans_deleted, orphans_kept, parse_errors}
     # otherwise -- see reprocess_tasks.reprocess_case.
     jobs: list[dict] = []
+    progress: ReprocessProgress = ReprocessProgress()
 
 
 class CaseStats(BaseModel):

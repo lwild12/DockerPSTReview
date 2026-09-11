@@ -97,6 +97,7 @@ async def get_reprocess_status(
         last_run_started_at=case.reprocess_last_run_started_at,
         last_run_completed_at=case.reprocess_last_run_completed_at,
         jobs=(case.reprocess_last_run_summary or {}).get("jobs", []),
+        progress=case.reprocess_progress or {},
     )
 
 
@@ -124,6 +125,7 @@ async def run_reprocess(
         last_run_started_at=case.reprocess_last_run_started_at,
         last_run_completed_at=case.reprocess_last_run_completed_at,
         jobs=(case.reprocess_last_run_summary or {}).get("jobs", []),
+        progress=case.reprocess_progress or {},
     )
 
 
