@@ -53,10 +53,17 @@ export interface ReprocessJobSummary {
   parse_errors?: number;
 }
 
+export interface ReprocessProgress {
+  total_jobs: number;
+  completed_jobs: number;
+  current_job_id: string | null;
+}
+
 export interface ReprocessSummary {
   last_run_started_at: string | null;
   last_run_completed_at: string | null;
   jobs: ReprocessJobSummary[];
+  progress: ReprocessProgress;
 }
 
 export async function listCases(): Promise<Case[]> {
