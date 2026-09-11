@@ -382,6 +382,17 @@ def _pypff_attachments(
     Content-ID to key off of, catches those too. A hidden attachment with no
     content ID can't be tied to any `cid:` reference in the body, so it's
     dropped rather than either shown as an attachment or embedded nowhere.
+
+    Some messages (commonly ones composed in a webmail client) store an
+    inline image's bytes twice as two separate MAPI attachment records: one
+    carrying the Content-ID used for inline display, and a second, plain
+    one with neither a Content-ID nor the hidden flag -- so it looks like a
+    completely ordinary, independently real attachment. Content-ID alone
+    can't catch that second record since it genuinely lacks one; the two
+    records are deduplicated below by exact byte content instead -- once an
+    image's bytes are already going to be embedded inline, an identical
+    attachment record contributes nothing a reviewer needs to see again as
+    its own separate item.
     """
     attachments: list[tuple[str, str, bytes]] = []
     inline_images: list[tuple[str, str, bytes]] = []
@@ -404,6 +415,9 @@ def _pypff_attachments(
             attachments.append((filename, mime_type, data))
         except Exception:
             logger.warning("Failed to read attachment %d, skipping it", i, exc_info=True)
+
+    inline_image_bytes = {data for _, _, data in inline_images}
+    attachments = [a for a in attachments if a[2] not in inline_image_bytes]
     return attachments, inline_images
 
 

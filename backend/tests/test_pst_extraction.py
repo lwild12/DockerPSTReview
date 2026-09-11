@@ -354,6 +354,30 @@ def test_pypff_attachments_treats_content_id_as_inline_even_without_the_hidden_f
     assert [(cid, mime) for cid, mime, _data in inline_images] == [("logo@nonoutlook", "image/png")]
 
 
+def test_pypff_attachments_drops_a_plain_duplicate_of_an_inline_images_bytes():
+    # Reported live: "inline images seem to be resolved in documents view,
+    # but I am still seeing them in review set view" -- confirmed to be the
+    # same image both ways, on a fresh import. Some messages (commonly ones
+    # composed in a webmail client) store an inline image's bytes twice as
+    # two separate MAPI attachment records: one with the Content-ID used
+    # for inline display, and a second, plain one with neither a
+    # Content-ID nor the hidden flag, so it looks like a completely
+    # ordinary, independently real attachment -- Content-ID alone can't
+    # catch that second record since it genuinely lacks one.
+    inline = _FakeAttachment(
+        b"PNGDATA", mime_type="image/png", hidden=True, content_id="sig123@test"
+    )
+    plain_duplicate = _FakeAttachment(b"PNGDATA", filename="image007.png", mime_type="image/png")
+    real = _FakeAttachment(b"%PDF-fake", filename="report.pdf", mime_type="application/pdf")
+
+    attachments, inline_images = _pypff_attachments(
+        _FakeMessage(attachments=[inline, plain_duplicate, real])
+    )
+
+    assert [a[0] for a in attachments] == ["report.pdf"]
+    assert [(cid, mime) for cid, mime, _data in inline_images] == [("sig123@test", "image/png")]
+
+
 def test_stage_pypff_email_embeds_inline_image_instead_of_listing_it_as_an_attachment(tmp_path):
     real = _FakeAttachment(b"%PDF-fake", filename="report.pdf", mime_type="application/pdf")
     signature_logo = _FakeAttachment(
