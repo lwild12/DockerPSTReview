@@ -71,7 +71,17 @@ def parse_eml_bytes(raw: bytes) -> ParsedEmail:
     body_text = ""
     body_html = ""
     attachments: list[ParsedAttachment] = []
-    inline_images: dict[str, tuple[str, bytes]] = {}
+    # Candidate inline images, keyed by Content-ID -- (mime_type, payload,
+    # filename). Deliberately NOT gated on Content-Disposition: "inline"
+    # here. Real-world senders are inconsistent about that header -- long
+    # Outlook thread exports in particular mark every cid-referenced image
+    # `attachment` rather than `inline`, and rely purely on the HTML body's
+    # `cid:` reference for inline display, same as a mail client does when
+    # rendering. Whether a candidate is genuinely inline is instead decided
+    # below, once the HTML body is fully assembled, by checking if the body
+    # actually references it -- if it doesn't, it falls back to being a
+    # normal attachment rather than silently vanishing.
+    image_candidates: dict[str, tuple[str, bytes, str]] = {}
 
     if msg.is_multipart():
         for part in msg.walk():
@@ -80,11 +90,10 @@ def parse_eml_bytes(raw: bytes) -> ParsedEmail:
             disposition = part.get_content_disposition()
             content_type = part.get_content_type()
             filename = part.get_filename()
-            if disposition == "inline" and content_type.startswith("image/"):
-                content_id = (part.get("Content-ID") or "").strip().strip("<>")
-                if content_id:
-                    payload = part.get_payload(decode=True) or b""
-                    inline_images[content_id] = (content_type, payload)
+            content_id = (part.get("Content-ID") or "").strip().strip("<>")
+            if content_type.startswith("image/") and content_id:
+                payload = part.get_payload(decode=True) or b""
+                image_candidates[content_id] = (content_type, payload, filename or "")
             elif disposition == "attachment" or (disposition != "inline" and filename):
                 payload = part.get_payload(decode=True) or b""
                 attachments.append(
@@ -104,10 +113,21 @@ def parse_eml_bytes(raw: bytes) -> ParsedEmail:
         else:
             body_text = msg.get_content()
 
-    if body_html and inline_images:
-        for content_id, (mime_type, payload) in inline_images.items():
+    for content_id, (mime_type, payload, filename) in image_candidates.items():
+        marker = f"cid:{content_id}"
+        if body_html and marker in body_html:
             data_uri = f"data:{mime_type};base64,{base64.b64encode(payload).decode('ascii')}"
-            body_html = body_html.replace(f"cid:{content_id}", data_uri)
+            body_html = body_html.replace(marker, data_uri)
+        else:
+            # Has a Content-ID, but nothing in the body actually references
+            # it -- not really inline, so show it rather than drop it.
+            attachments.append(
+                ParsedAttachment(
+                    filename=filename or f"{content_id}",
+                    mime_type=mime_type,
+                    content=payload,
+                )
+            )
 
     return ParsedEmail(
         subject=str(msg["subject"] or ""),
