@@ -37,6 +37,7 @@ class DocumentListItem(BaseModel):
     has_native_file: bool = False
     is_inclusive_email: bool = True
     near_duplicate_cluster_id: uuid.UUID | None = None
+    content_changed_at: datetime | None = None
     tags: list[TagRead] = []
     ai_relevance: DocumentAiRelevanceRead | None = None
 
@@ -79,6 +80,7 @@ class DocumentDetail(BaseModel):
     attachment_count: int = 0
     is_inclusive_email: bool = True
     near_duplicate_cluster_id: uuid.UUID | None = None
+    content_changed_at: datetime | None = None
     tags: list[TagRead] = []
     ai_relevance: DocumentAiRelevanceRead | None = None
 

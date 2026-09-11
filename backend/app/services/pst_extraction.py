@@ -71,6 +71,11 @@ class ManifestEntry:
     doc_type: str  # "email" | "contact" | "calendar"
     staged_path: str
     folder_path: str
+    # Stable identity for this item within the source PST -- see
+    # Document.source_item_key. Only set for items staged via the primary
+    # pypff path; empty for the readpst fallback and for contacts (always
+    # readpst-sourced), which reprocessing can't match against prior runs.
+    source_item_key: str = ""
 
 
 @dataclass
@@ -382,6 +387,17 @@ def _pypff_attachments(
     Content-ID to key off of, catches those too. A hidden attachment with no
     content ID can't be tied to any `cid:` reference in the body, so it's
     dropped rather than either shown as an attachment or embedded nowhere.
+
+    Some messages (commonly ones composed in a webmail client) store an
+    inline image's bytes twice as two separate MAPI attachment records: one
+    carrying the Content-ID used for inline display, and a second, plain
+    one with neither a Content-ID nor the hidden flag -- so it looks like a
+    completely ordinary, independently real attachment. Content-ID alone
+    can't catch that second record since it genuinely lacks one; the two
+    records are deduplicated below by exact byte content instead -- once an
+    image's bytes are already going to be embedded inline, an identical
+    attachment record contributes nothing a reviewer needs to see again as
+    its own separate item.
     """
     attachments: list[tuple[str, str, bytes]] = []
     inline_images: list[tuple[str, str, bytes]] = []
@@ -404,6 +420,9 @@ def _pypff_attachments(
             attachments.append((filename, mime_type, data))
         except Exception:
             logger.warning("Failed to read attachment %d, skipping it", i, exc_info=True)
+
+    inline_image_bytes = {data for _, _, data in inline_images}
+    attachments = [a for a in attachments if a[2] not in inline_image_bytes]
     return attachments, inline_images
 
 
@@ -508,6 +527,14 @@ def _walk_pypff_folder(
             message_class = _get_message_class(message)
             if "contact" in message_class:
                 continue  # handled separately via readpst's VCard export
+            # message.identifier is the PST's own internal node id for this
+            # item -- stable across re-opening the same file regardless of
+            # anything this app's parsing logic does, which is what lets a
+            # reprocess run recognize "same item" and update it in place.
+            try:
+                source_item_key = f"pypff-msg:{message.get_identifier()}"
+            except Exception:
+                source_item_key = ""
             if "appointment" in message_class or "schedule.meeting" in message_class:
                 item_id, path = _stage_pypff_calendar(message, staging_dir)
                 entries.append(
@@ -516,6 +543,7 @@ def _walk_pypff_folder(
                         doc_type="calendar",
                         staged_path=str(path),
                         folder_path=current_path,
+                        source_item_key=source_item_key,
                     )
                 )
             else:
@@ -526,6 +554,7 @@ def _walk_pypff_folder(
                         doc_type="email",
                         staged_path=str(path),
                         folder_path=current_path,
+                        source_item_key=source_item_key,
                     )
                 )
         except Exception:

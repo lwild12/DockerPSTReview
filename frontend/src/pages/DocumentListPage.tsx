@@ -32,6 +32,7 @@ export function DocumentListPage() {
   const [dedupStatus, setDedupStatus] = useState<string | null>(null);
   const [inclusiveFilter, setInclusiveFilter] = useState<string | null>(null);
   const [aiRelevanceFilter, setAiRelevanceFilter] = useState<string | null>(null);
+  const [contentChangedFilter, setContentChangedFilter] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const clusterFilter = searchParams.get("near_duplicate_cluster_id");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -49,6 +50,7 @@ export function DocumentListPage() {
       inclusiveFilter,
       clusterFilter,
       aiRelevanceFilter,
+      contentChangedFilter,
       search,
     ],
     queryFn: () =>
@@ -59,6 +61,7 @@ export function DocumentListPage() {
         near_duplicate_cluster_id: clusterFilter || undefined,
         ai_relevance_status: aiRelevanceFilter === "failed" ? "failed" : undefined,
         ai_relevance_min_score: aiRelevanceFilter === "high" ? 70 : undefined,
+        content_changed: contentChangedFilter ? contentChangedFilter === "true" : undefined,
         q: search || undefined,
       }),
     enabled: caseId !== "",
@@ -171,6 +174,14 @@ export function DocumentListPage() {
           value={aiRelevanceFilter}
           onChange={setAiRelevanceFilter}
           w={200}
+        />
+        <Select
+          placeholder="All documents"
+          clearable
+          data={[{ value: "true", label: "Needs re-review (reprocessed)" }]}
+          value={contentChangedFilter}
+          onChange={setContentChangedFilter}
+          w={220}
         />
         <TextInput
           placeholder="Search subject/body/sender"

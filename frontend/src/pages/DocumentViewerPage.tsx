@@ -1,4 +1,5 @@
 import {
+  Alert,
   Anchor,
   Autocomplete,
   Badge,
@@ -240,6 +241,14 @@ export function DocumentViewerPage() {
               <Badge>{document.doc_type}</Badge>
             </Group>
           </Group>
+
+          {document.content_changed_at && (
+            <Alert color="orange" variant="light" mb="md">
+              This document's content was updated by a case reprocess on{" "}
+              {new Date(document.content_changed_at).toLocaleString()} -- worth another look.
+              Updating this document's review status clears this notice.
+            </Alert>
+          )}
 
           <Stack gap={4} mb="md">
             <Text size="sm">

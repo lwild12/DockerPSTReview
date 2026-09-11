@@ -6,6 +6,7 @@ import json
 import logging
 import shutil
 import uuid
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -32,6 +33,25 @@ logger = logging.getLogger(__name__)
 settings = get_settings()
 
 
+@dataclass
+class ExistingDocumentIndex:
+    """Existing documents for an import job being reprocessed, indexed so
+    the staging functions below can recognize "this is the same item as
+    before" and update it in place instead of creating a duplicate. Empty
+    (the default via `_stage_entry`'s `existing=None`) for a normal, first-
+    time import -- every item is created fresh, exactly as before this was
+    added."""
+
+    # source_item_key -> the email/calendar Document it previously produced.
+    by_source_key: dict[str, Document] = field(default_factory=dict)
+    # parent email/calendar's source_item_key -> {attachment content_hash:
+    # the attachment Document it previously produced}. Attachments are
+    # matched by content rather than their own stable key -- see
+    # _pypff_attachments's dedup fix for why position/index alone isn't
+    # reliable across two extraction runs.
+    children_by_parent_key: dict[str, dict[str, Document]] = field(default_factory=dict)
+
+
 def _min_datetime() -> datetime:
     return datetime.min.replace(tzinfo=UTC)
 
@@ -47,7 +67,27 @@ def _participants_key(document: Document) -> str:
     return ",".join(sorted(p.strip().lower() for p in parts if p))
 
 
-def _stage_email_entry(entry: ManifestEntry, job: PSTImportJob) -> list[Document]:
+def _apply_content_hash(document: Document, content_hash: str) -> None:
+    """Update a (possibly pre-existing, reprocess-matched) document's
+    content_hash, recording that its content changed and clearing
+    render/OCR output so stale output isn't shown while a fresh render/OCR
+    pass (triggered by the reprocess caller) is pending. A no-op beyond the
+    hash assignment when the content hasn't actually changed -- including
+    for a brand-new document, whose blank prior hash always "changes"."""
+    if document.content_hash and document.content_hash != content_hash:
+        document.content_changed_at = datetime.now(UTC)
+        document.rendered_pdf_path = ""
+        document.rendered_pdf_page_count = 0
+        document.render_error = ""
+        document.ocr_text = ""
+        document.ocr_status = document.ocr_status.not_applicable
+        document.ocr_error = ""
+    document.content_hash = content_hash
+
+
+def _stage_email_entry(
+    entry: ManifestEntry, job: PSTImportJob, existing: ExistingDocumentIndex | None = None
+) -> list[Document]:
     raw = Path(entry.staged_path).read_bytes()
     parsed = parse_eml_bytes(raw)
 
@@ -62,42 +102,54 @@ def _stage_email_entry(entry: ManifestEntry, job: PSTImportJob) -> list[Document
         attachment_hashes,
     )
 
-    document = Document(
+    matched = (
+        existing.by_source_key.get(entry.source_item_key)
+        if existing and entry.source_item_key
+        else None
+    )
+    document = matched or Document(
         id=uuid.uuid4(),
         case_id=job.case_id,
         import_job_id=job.id,
         custodian_id=job.custodian_id,
         doc_type=DocType.email,
-        subject=parsed.subject,
-        sender=parsed.sender,
-        recipients_to=parsed.recipients_to,
-        recipients_cc=parsed.recipients_cc,
-        recipients_bcc=parsed.recipients_bcc,
-        sent_at=parsed.sent_at,
-        message_id=parsed.message_id,
-        in_reply_to=parsed.in_reply_to,
-        references=parsed.references,
-        body_text=parsed.body_text,
-        body_html=parsed.body_html,
-        pst_folder_path=entry.folder_path,
-        content_hash=content_hash,
+        source_item_key=entry.source_item_key,
     )
+    document.subject = parsed.subject
+    document.sender = parsed.sender
+    document.recipients_to = parsed.recipients_to
+    document.recipients_cc = parsed.recipients_cc
+    document.recipients_bcc = parsed.recipients_bcc
+    document.sent_at = parsed.sent_at
+    document.message_id = parsed.message_id
+    document.in_reply_to = parsed.in_reply_to
+    document.references = parsed.references
+    document.body_text = parsed.body_text
+    document.body_html = parsed.body_html
+    document.pst_folder_path = entry.folder_path
+    _apply_content_hash(document, content_hash)
 
     documents = [document]
+    existing_children = (
+        existing.children_by_parent_key.get(entry.source_item_key, {})
+        if existing and entry.source_item_key
+        else {}
+    )
     for attachment, att_hash in zip(parsed.attachments, attachment_hashes, strict=True):
-        child = Document(
+        matched_child = existing_children.get(att_hash)
+        child = matched_child or Document(
             id=uuid.uuid4(),
             case_id=job.case_id,
             import_job_id=job.id,
             custodian_id=job.custodian_id,
             doc_type=DocType.attachment,
-            parent_document_id=document.id,
-            subject=attachment.filename,
-            mime_type=attachment.mime_type,
-            file_size=len(attachment.content),
-            content_hash=att_hash,
-            pst_folder_path=entry.folder_path,
         )
+        child.parent_document_id = document.id
+        child.subject = attachment.filename
+        child.mime_type = attachment.mime_type
+        child.file_size = len(attachment.content)
+        child.pst_folder_path = entry.folder_path
+        _apply_content_hash(child, att_hash)
         child.native_file_path = storage.save_native_file(
             job.case_id, child.id, attachment.filename, attachment.content
         )
@@ -106,48 +158,68 @@ def _stage_email_entry(entry: ManifestEntry, job: PSTImportJob) -> list[Document
     return documents
 
 
-def _stage_contact_entry(entry: ManifestEntry, job: PSTImportJob) -> Document:
+def _stage_contact_entry(
+    entry: ManifestEntry, job: PSTImportJob, existing: ExistingDocumentIndex | None = None
+) -> Document:
     data = pst_extraction.parse_vcard_contact(Path(entry.staged_path).read_bytes())
     canonical = "\x1f".join(
         [data.get("full_name", ""), ",".join(sorted(e.lower() for e in data.get("emails", [])))]
     )
     content_hash = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
-    return Document(
+    matched = (
+        existing.by_source_key.get(entry.source_item_key)
+        if existing and entry.source_item_key
+        else None
+    )
+    document = matched or Document(
         id=uuid.uuid4(),
         case_id=job.case_id,
         import_job_id=job.id,
         custodian_id=job.custodian_id,
         doc_type=DocType.contact,
-        subject=data.get("full_name", ""),
-        structured_metadata=data,
-        pst_folder_path=entry.folder_path,
-        content_hash=content_hash,
+        source_item_key=entry.source_item_key,
     )
+    document.subject = data.get("full_name", "")
+    document.structured_metadata = data
+    document.pst_folder_path = entry.folder_path
+    _apply_content_hash(document, content_hash)
+    return document
 
 
-def _stage_calendar_entry(entry: ManifestEntry, job: PSTImportJob) -> Document:
+def _stage_calendar_entry(
+    entry: ManifestEntry, job: PSTImportJob, existing: ExistingDocumentIndex | None = None
+) -> Document:
     data = json.loads(Path(entry.staged_path).read_text())
     content_hash = hashlib.sha256(json.dumps(data, sort_keys=True).encode("utf-8")).hexdigest()
-    return Document(
+    matched = (
+        existing.by_source_key.get(entry.source_item_key)
+        if existing and entry.source_item_key
+        else None
+    )
+    document = matched or Document(
         id=uuid.uuid4(),
         case_id=job.case_id,
         import_job_id=job.id,
         custodian_id=job.custodian_id,
         doc_type=DocType.calendar,
-        subject=data.get("subject", ""),
-        structured_metadata=data,
-        pst_folder_path=entry.folder_path,
-        content_hash=content_hash,
+        source_item_key=entry.source_item_key,
     )
+    document.subject = data.get("subject", "")
+    document.structured_metadata = data
+    document.pst_folder_path = entry.folder_path
+    _apply_content_hash(document, content_hash)
+    return document
 
 
-def _stage_entry(entry: ManifestEntry, job: PSTImportJob) -> list[Document]:
+def _stage_entry(
+    entry: ManifestEntry, job: PSTImportJob, existing: ExistingDocumentIndex | None = None
+) -> list[Document]:
     if entry.doc_type == "email":
-        return _stage_email_entry(entry, job)
+        return _stage_email_entry(entry, job, existing)
     if entry.doc_type == "contact":
-        return [_stage_contact_entry(entry, job)]
+        return [_stage_contact_entry(entry, job, existing)]
     if entry.doc_type == "calendar":
-        return [_stage_calendar_entry(entry, job)]
+        return [_stage_calendar_entry(entry, job, existing)]
     return []
 
 

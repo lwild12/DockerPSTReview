@@ -76,6 +76,7 @@ async def list_documents(
     tag_id: uuid.UUID | None = None,
     is_inclusive_email: bool | None = None,
     near_duplicate_cluster_id: uuid.UUID | None = None,
+    content_changed: bool | None = None,
     ai_relevance_status: AiRelevanceStatus | None = None,
     ai_relevance_min_score: int | None = Query(None, ge=0, le=100),
     q: str | None = None,
@@ -101,6 +102,12 @@ async def list_documents(
         stmt = stmt.where(Document.is_inclusive_email == is_inclusive_email)
     if near_duplicate_cluster_id is not None:
         stmt = stmt.where(Document.near_duplicate_cluster_id == near_duplicate_cluster_id)
+    if content_changed is not None:
+        stmt = stmt.where(
+            Document.content_changed_at.is_not(None)
+            if content_changed
+            else Document.content_changed_at.is_(None)
+        )
     if ai_relevance_status is not None or ai_relevance_min_score is not None:
         stmt = stmt.join(DocumentAiRelevance, DocumentAiRelevance.document_id == Document.id)
         if ai_relevance_status is not None:

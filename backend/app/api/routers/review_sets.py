@@ -196,10 +196,15 @@ async def bulk_update_review_status(
     )
     rows = result.all()
     now = datetime.now(UTC)
-    for link, _document in rows:
+    for link, document in rows:
         link.review_status = payload.review_status
         link.reviewed_by_id = user.id
         link.reviewed_at = now
+        # A reprocess flags a document as needing another look by setting
+        # this; a reviewer acting on it again (even to leave its status
+        # unchanged) is exactly that look, so the flag has served its
+        # purpose.
+        document.content_changed_at = None
 
     if rows:
         record_audit(
@@ -243,10 +248,15 @@ async def update_review_set_document(
     if link is None:
         raise HTTPException(status_code=404, detail="Document is not in this review set")
 
+    document = await db.get(Document, document_id)
     if payload.review_status is not None:
         link.review_status = payload.review_status
         link.reviewed_by_id = user.id
         link.reviewed_at = datetime.now(UTC)
+        # See bulk_update_review_status above -- a reprocess's "needs
+        # another look" flag is satisfied once a reviewer acts here.
+        if document is not None:
+            document.content_changed_at = None
     if payload.assigned_reviewer_id is not None:
         link.assigned_reviewer_id = payload.assigned_reviewer_id
     if payload.notes is not None:
@@ -262,5 +272,4 @@ async def update_review_set_document(
         {"review_set_id": str(review_set_id), "review_status": link.review_status.value},
     )
     await db.commit()
-    document = await db.get(Document, document_id)
     return _to_read(link, document)

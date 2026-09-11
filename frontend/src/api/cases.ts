@@ -39,6 +39,26 @@ export interface Custodian {
   email: string;
 }
 
+export interface ReprocessJobSummary {
+  import_job_id: string;
+  uploaded_filename: string;
+  skipped: boolean;
+  reason?: string;
+  total_items?: number;
+  new?: number;
+  updated?: number;
+  unchanged?: number;
+  orphans_deleted?: number;
+  orphans_kept?: number;
+  parse_errors?: number;
+}
+
+export interface ReprocessSummary {
+  last_run_started_at: string | null;
+  last_run_completed_at: string | null;
+  jobs: ReprocessJobSummary[];
+}
+
 export async function listCases(): Promise<Case[]> {
   return apiFetch<Case[]>("/cases");
 }
@@ -90,4 +110,12 @@ export async function createCustodian(
     method: "POST",
     body: JSON.stringify({ name, email }),
   });
+}
+
+export async function getReprocessStatus(caseId: string): Promise<ReprocessSummary> {
+  return apiFetch<ReprocessSummary>(`/cases/${caseId}/reprocess`);
+}
+
+export async function runReprocess(caseId: string): Promise<ReprocessSummary> {
+  return apiFetch<ReprocessSummary>(`/cases/${caseId}/reprocess`, { method: "POST" });
 }

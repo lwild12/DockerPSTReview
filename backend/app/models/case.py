@@ -3,7 +3,7 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import DateTime, Enum, ForeignKey, String, Text, UniqueConstraint
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
@@ -35,6 +35,17 @@ class Case(UUIDPKMixin, TimestampMixin, Base):
     ai_review_last_run_completed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # "Reprocess": re-run extraction against the PST(s) already stored for
+    # this case (no re-upload needed) so a fixed parsing/extraction bug
+    # applies to already-imported documents too, updating them in place
+    # rather than creating duplicates. See app/tasks/reprocess_tasks.py.
+    reprocess_last_run_started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    reprocess_last_run_completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    reprocess_last_run_summary: Mapped[dict] = mapped_column(JSONB, default=dict)
 
     memberships: Mapped[list["CaseMembership"]] = relationship(
         back_populates="case", cascade="all, delete-orphan"
