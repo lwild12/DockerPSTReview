@@ -136,6 +136,26 @@ async def test_dedup_status_filter(client, db_session):
     assert resp.json()[0]["dedup_status"] == "duplicate"
 
 
+async def test_content_changed_filter(client, db_session):
+    from datetime import UTC, datetime
+
+    _, case_id = await _setup_case(client)
+    flagged = await _seed_document(
+        db_session, case_id, content_changed_at=datetime.now(UTC), subject="Reprocessed"
+    )
+    await _seed_document(db_session, case_id, subject="Untouched")
+
+    resp = await client.get(f"/api/cases/{case_id}/documents", params={"content_changed": "true"})
+    assert resp.status_code == 200
+    assert [d["id"] for d in resp.json()] == [str(flagged.id)]
+
+    resp_false = await client.get(
+        f"/api/cases/{case_id}/documents", params={"content_changed": "false"}
+    )
+    assert resp_false.status_code == 200
+    assert [d["subject"] for d in resp_false.json()] == ["Untouched"]
+
+
 async def test_list_document_attachments(client, db_session):
     _, case_id = await _setup_case(client)
     email = await _seed_document(db_session, case_id, subject="Cover email")

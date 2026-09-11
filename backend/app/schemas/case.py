@@ -49,6 +49,17 @@ class CustodianRead(BaseModel):
     email: str
 
 
+class ReprocessSummary(BaseModel):
+    last_run_started_at: datetime | None = None
+    last_run_completed_at: datetime | None = None
+    # One entry per PST import job this case has: {import_job_id,
+    # uploaded_filename, skipped, reason} when skipped, or
+    # {import_job_id, uploaded_filename, skipped: False, total_items, new,
+    # updated, unchanged, orphans_deleted, orphans_kept, parse_errors}
+    # otherwise -- see reprocess_tasks.reprocess_case.
+    jobs: list[dict] = []
+
+
 class CaseStats(BaseModel):
     custodians_count: int
     import_jobs_total: int

@@ -30,8 +30,10 @@ import {
   deleteCase,
   getCase,
   getCaseStats,
+  getReprocessStatus,
   listCustodians,
   listMembers,
+  runReprocess,
   type CaseRole,
 } from "../api/cases";
 import { createImportJob, listImportJobs, TERMINAL_STATUSES } from "../api/importJobs";
@@ -89,6 +91,8 @@ export function CaseDetailPage() {
   const [addToReviewModal, { open: openAddToReviewModal, close: closeAddToReviewModal }] =
     useDisclosure(false);
   const [reviewSetModal, { open: openReviewSetModal, close: closeReviewSetModal }] =
+    useDisclosure(false);
+  const [reprocessModal, { open: openReprocessModal, close: closeReprocessModal }] =
     useDisclosure(false);
 
   const [memberEmail, setMemberEmail] = useState("");
@@ -149,6 +153,16 @@ export function CaseDetailPage() {
     queryFn: () => getCaseAnalytics(caseId),
     enabled,
   });
+  const { data: reprocessStatus } = useQuery({
+    queryKey: ["reprocess", caseId],
+    queryFn: () => getReprocessStatus(caseId),
+    enabled,
+    refetchInterval: (query) => {
+      const s = query.state.data;
+      const running = s ? !!s.last_run_started_at && !s.last_run_completed_at : false;
+      return running ? 2000 : false;
+    },
+  });
   const { data: aiReview } = useQuery({
     queryKey: ["ai-review", caseId],
     queryFn: () => getAiReviewSummary(caseId),
@@ -162,6 +176,9 @@ export function CaseDetailPage() {
 
   const isAdmin = caseData?.my_role === "admin";
   const canEdit = caseData?.my_role === "admin" || caseData?.my_role === "reviewer";
+  const reprocessRunning = Boolean(
+    reprocessStatus?.last_run_started_at && !reprocessStatus?.last_run_completed_at,
+  );
 
   const [aiCriteria, setAiCriteria] = useState("");
   const [aiCriteriaInitialized, setAiCriteriaInitialized] = useState(false);
@@ -256,6 +273,14 @@ export function CaseDetailPage() {
     mutationFn: () => recomputeCaseAnalytics(caseId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["case-analytics", caseId] });
+    },
+  });
+
+  const reprocessMutation = useMutation({
+    mutationFn: () => runReprocess(caseId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["reprocess", caseId] });
+      closeReprocessModal();
     },
   });
 
@@ -423,6 +448,63 @@ export function CaseDetailPage() {
         ) : (
           <Text size="sm" c="dimmed">
             Not computed yet for this case.
+          </Text>
+        )}
+      </Card>
+
+      <Card withBorder radius="md" p="lg" mb="md">
+        <Group justify="space-between" align="flex-start" mb="xs">
+          <div>
+            <Title order={4}>Reprocess case</Title>
+            <Text size="sm" c="dimmed">
+              Re-runs extraction against the PST(s) already stored for this case — no
+              re-upload needed — so a fixed extraction bug applies to already-imported
+              documents too. Matching documents are updated in place (tags, redactions,
+              coding, and review status are kept) and flagged if their content changed,
+              for another look.
+            </Text>
+          </div>
+          {isAdmin && (
+            <Button
+              size="xs"
+              variant="light"
+              onClick={openReprocessModal}
+              loading={reprocessRunning}
+              disabled={reprocessRunning}
+            >
+              Reprocess
+            </Button>
+          )}
+        </Group>
+        {reprocessStatus?.last_run_started_at ? (
+          <Stack gap={4}>
+            <Text size="sm">
+              {reprocessRunning
+                ? `Running since ${new Date(reprocessStatus.last_run_started_at).toLocaleString()}...`
+                : `Last run completed ${new Date(
+                    reprocessStatus.last_run_completed_at as string,
+                  ).toLocaleString()}`}
+            </Text>
+            {!reprocessRunning && reprocessStatus.jobs.length > 0 && (
+              <List size="sm">
+                {reprocessStatus.jobs.map((j) => (
+                  <List.Item key={j.import_job_id}>
+                    {j.uploaded_filename}:{" "}
+                    {j.skipped
+                      ? `skipped — ${j.reason}`
+                      : `${j.new} new, ${j.updated} updated, ${j.unchanged} unchanged` +
+                        (j.orphans_deleted ? `, ${j.orphans_deleted} redundant removed` : "") +
+                        (j.orphans_kept
+                          ? `, ${j.orphans_kept} redundant kept (had review activity)`
+                          : "")}
+                  </List.Item>
+                ))}
+              </List>
+            )}
+          </Stack>
+        ) : (
+          <Text size="sm" c="dimmed">
+            Never run for this case.
           </Text>
         )}
       </Card>
@@ -761,6 +843,27 @@ export function CaseDetailPage() {
             </Button>
           </Stack>
         </form>
+      </Modal>
+
+      <Modal opened={reprocessModal} onClose={closeReprocessModal} title="Reprocess this case?">
+        <Stack>
+          <Text size="sm">
+            This re-extracts every PST already uploaded to this case and updates matching
+            documents in place — tags, redactions, coding, and review status are preserved.
+            Documents whose content changes are flagged for another look; documents that
+            become redundant (e.g. an image now correctly embedded inline instead of its own
+            attachment) are removed only if no one has reviewed, tagged, or redacted them.
+            This can take a while for a large case.
+          </Text>
+          <Group justify="flex-end">
+            <Button variant="default" onClick={closeReprocessModal}>
+              Cancel
+            </Button>
+            <Button onClick={() => reprocessMutation.mutate()} loading={reprocessMutation.isPending}>
+              Reprocess
+            </Button>
+          </Group>
+        </Stack>
       </Modal>
 
       <Modal

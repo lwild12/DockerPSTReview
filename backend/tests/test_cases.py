@@ -206,3 +206,47 @@ async def test_custodian_crud_and_role_boundary(client):
     listed = await client.get(f"/api/cases/{case_id}/custodians")
     assert listed.status_code == 200
     assert len(listed.json()) == 1
+
+
+async def test_reprocess_status_before_any_run(client):
+    await register_and_login(client, "reprocess1@example.com")
+    case_id = (await client.post("/api/cases", json={"name": "Case D"})).json()["id"]
+
+    resp = await client.get(f"/api/cases/{case_id}/reprocess")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["last_run_started_at"] is None
+    assert body["last_run_completed_at"] is None
+    assert body["jobs"] == []
+
+
+async def test_reprocess_dispatches_task_and_reviewer_cannot_trigger_it(client, monkeypatch):
+    await register_and_login(client, "reprocess2@example.com")
+    case_id = (await client.post("/api/cases", json={"name": "Case E"})).json()["id"]
+
+    dispatched = {}
+
+    def _fake_delay(case_id_arg):
+        dispatched["case_id"] = case_id_arg
+
+    from app.api.routers import cases as cases_router
+
+    monkeypatch.setattr(cases_router.reprocess_case_task, "delay", _fake_delay)
+
+    resp = await client.post(f"/api/cases/{case_id}/reprocess")
+    assert resp.status_code == 200
+    assert dispatched == {"case_id": case_id}
+
+    from httpx import ASGITransport, AsyncClient
+
+    from app.main import app
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as reviewer_client:
+        await register_and_login(reviewer_client, "reviewer9@example.com")
+        await client.post(
+            f"/api/cases/{case_id}/members",
+            json={"email": "reviewer9@example.com", "role": "reviewer"},
+        )
+        forbidden = await reviewer_client.post(f"/api/cases/{case_id}/reprocess")
+        assert forbidden.status_code == 403

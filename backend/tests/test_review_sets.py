@@ -164,6 +164,60 @@ async def test_bulk_update_review_status(client, db_session):
     assert statuses[str(doc3.id)] == "unreviewed"
 
 
+async def test_update_review_status_clears_content_changed_flag(client, db_session):
+    # A reprocess run flags a document (content_changed_at) as needing
+    # another look without touching review_status -- acting on the
+    # document again (even leaving its status where it was) should clear
+    # that flag, same as a reviewer having actually looked at it.
+    from datetime import UTC, datetime
+
+    case_id = await _setup_case(client)
+    doc = await _seed_document(db_session, case_id)
+    doc.content_changed_at = datetime.now(UTC)
+    await db_session.commit()
+
+    review_set = await client.post(f"/api/cases/{case_id}/review-sets", json={"name": "RS"})
+    review_set_id = review_set.json()["id"]
+    await client.post(
+        f"/api/cases/{case_id}/review-sets/{review_set_id}/documents",
+        json={"document_ids": [str(doc.id)]},
+    )
+
+    update_resp = await client.patch(
+        f"/api/cases/{case_id}/review-sets/{review_set_id}/documents/{doc.id}",
+        json={"review_status": "reviewed"},
+    )
+    assert update_resp.status_code == 200
+
+    await db_session.refresh(doc)
+    assert doc.content_changed_at is None
+
+
+async def test_bulk_update_review_status_clears_content_changed_flag(client, db_session):
+    from datetime import UTC, datetime
+
+    case_id = await _setup_case(client)
+    doc = await _seed_document(db_session, case_id)
+    doc.content_changed_at = datetime.now(UTC)
+    await db_session.commit()
+
+    review_set = await client.post(f"/api/cases/{case_id}/review-sets", json={"name": "RS"})
+    review_set_id = review_set.json()["id"]
+    await client.post(
+        f"/api/cases/{case_id}/review-sets/{review_set_id}/documents",
+        json={"document_ids": [str(doc.id)]},
+    )
+
+    bulk_resp = await client.post(
+        f"/api/cases/{case_id}/review-sets/{review_set_id}/documents/bulk-review-status",
+        json={"document_ids": [str(doc.id)], "review_status": "reviewed"},
+    )
+    assert bulk_resp.status_code == 200
+
+    await db_session.refresh(doc)
+    assert doc.content_changed_at is None
+
+
 async def test_reviewer_can_manage_review_sets_but_viewer_cannot(client, db_session):
     case_id = await _setup_case(client)
     doc = await _seed_document(db_session, case_id)

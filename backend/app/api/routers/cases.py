@@ -15,9 +15,17 @@ from app.models.export import ExportJob
 from app.models.importjob import PSTImportJob
 from app.models.review import ReviewSet, ReviewSetDocument
 from app.models.user import User
-from app.schemas.case import CaseCreate, CaseMemberCreate, CaseMemberRead, CaseRead, CaseStats
+from app.schemas.case import (
+    CaseCreate,
+    CaseMemberCreate,
+    CaseMemberRead,
+    CaseRead,
+    CaseStats,
+    ReprocessSummary,
+)
 from app.services.audit import record_audit
 from app.services.storage import case_root
+from app.tasks.reprocess_tasks import reprocess_case_task
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +82,49 @@ async def get_case(
     item = CaseRead.model_validate(case)
     item.my_role = membership.role
     return item
+
+
+@router.get("/{case_id}/reprocess", response_model=ReprocessSummary)
+async def get_reprocess_status(
+    case_id: uuid.UUID,
+    _membership: CaseMembership = Depends(require_case_member),
+    db: AsyncSession = Depends(get_db),
+):
+    case = await db.get(Case, case_id)
+    if case is None:
+        raise HTTPException(status_code=404, detail="Case not found")
+    return ReprocessSummary(
+        last_run_started_at=case.reprocess_last_run_started_at,
+        last_run_completed_at=case.reprocess_last_run_completed_at,
+        jobs=(case.reprocess_last_run_summary or {}).get("jobs", []),
+    )
+
+
+@router.post("/{case_id}/reprocess", response_model=ReprocessSummary)
+async def run_reprocess(
+    case_id: uuid.UUID,
+    _membership: CaseMembership = Depends(require_case_admin),
+    user: User = Depends(current_active_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Re-run extraction against every PST already stored for this case,
+    updating previously-imported documents in place where a fixed parsing
+    bug now recovers different content -- no delete/recreate/re-upload
+    needed. Runs asynchronously (Celery); poll GET .../reprocess for
+    progress, same as an import job."""
+    case = await db.get(Case, case_id)
+    if case is None:
+        raise HTTPException(status_code=404, detail="Case not found")
+    record_audit(db, case_id, user.id, "case.reprocess_started", "case", str(case_id))
+    await db.commit()
+
+    reprocess_case_task.delay(str(case_id))
+
+    return ReprocessSummary(
+        last_run_started_at=case.reprocess_last_run_started_at,
+        last_run_completed_at=case.reprocess_last_run_completed_at,
+        jobs=(case.reprocess_last_run_summary or {}).get("jobs", []),
+    )
 
 
 @router.delete("/{case_id}", status_code=status.HTTP_204_NO_CONTENT)

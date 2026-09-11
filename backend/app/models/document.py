@@ -136,6 +136,27 @@ class Document(UUIDPKMixin, TimestampMixin, Base):
         UUID(as_uuid=True), ForeignKey("documents.id"), nullable=True
     )
 
+    # Stable identity for the underlying PST item, independent of anything
+    # this app's own parsing/extraction logic decides -- lets a case
+    # "reprocess" (re-run extraction against the already-stored PST after a
+    # parsing fix, without deleting/recreating the case) recognize this is
+    # the *same* email/calendar item across two extraction runs and update
+    # it in place rather than creating a duplicate. Only populated for
+    # items extracted via the primary pypff path (message.get_identifier(),
+    # a PST-internal node id stable across re-opens of the same file);
+    # empty for anything staged via the readpst fallback or for attachments
+    # (which are instead matched by (parent's key, content_hash) at
+    # reprocess time -- see reprocess_tasks.py).
+    source_item_key: Mapped[str] = mapped_column(String(500), default="", index=True)
+    # Set when a reprocess run updates this document's content in place
+    # (content_hash changed) -- surfaced in the UI as "needs another look"
+    # without touching review_status/tags/redactions, which a reprocess
+    # never overwrites. Cleared once a reviewer acts on the document again
+    # (see the review-status update endpoint).
+    content_changed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
     tags: Mapped[list["DocumentTag"]] = relationship(  # noqa: F821
         back_populates="document", cascade="all, delete-orphan"
     )

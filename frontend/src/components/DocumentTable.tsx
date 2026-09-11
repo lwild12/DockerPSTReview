@@ -161,6 +161,13 @@ export function DocumentTable({
                   similar
                 </Badge>
               )}
+              {doc.content_changed_at && (
+                <Tooltip label="Content updated by a case reprocess -- worth another look">
+                  <Badge size="sm" color="orange" variant="light" ml={4}>
+                    needs re-review
+                  </Badge>
+                </Tooltip>
+              )}
             </Table.Td>
             <Table.Td onClick={() => navigate(`/cases/${caseId}/documents/${doc.id}`)}>
               <AiRelevanceBadge relevance={doc.ai_relevance} />

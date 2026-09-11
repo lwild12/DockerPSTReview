@@ -31,6 +31,7 @@ export interface DocumentListItem {
   has_native_file: boolean;
   is_inclusive_email: boolean;
   near_duplicate_cluster_id: string | null;
+  content_changed_at: string | null;
   tags: TagRead[];
   ai_relevance: DocumentAiRelevance | null;
 }
@@ -83,6 +84,7 @@ export interface DocumentFilters {
   tag_id?: string;
   is_inclusive_email?: boolean;
   near_duplicate_cluster_id?: string;
+  content_changed?: boolean;
   ai_relevance_status?: AiRelevanceStatus;
   ai_relevance_min_score?: number;
   q?: string;

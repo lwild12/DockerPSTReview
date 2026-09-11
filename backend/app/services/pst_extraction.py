@@ -71,6 +71,11 @@ class ManifestEntry:
     doc_type: str  # "email" | "contact" | "calendar"
     staged_path: str
     folder_path: str
+    # Stable identity for this item within the source PST -- see
+    # Document.source_item_key. Only set for items staged via the primary
+    # pypff path; empty for the readpst fallback and for contacts (always
+    # readpst-sourced), which reprocessing can't match against prior runs.
+    source_item_key: str = ""
 
 
 @dataclass
@@ -522,6 +527,14 @@ def _walk_pypff_folder(
             message_class = _get_message_class(message)
             if "contact" in message_class:
                 continue  # handled separately via readpst's VCard export
+            # message.identifier is the PST's own internal node id for this
+            # item -- stable across re-opening the same file regardless of
+            # anything this app's parsing logic does, which is what lets a
+            # reprocess run recognize "same item" and update it in place.
+            try:
+                source_item_key = f"pypff-msg:{message.get_identifier()}"
+            except Exception:
+                source_item_key = ""
             if "appointment" in message_class or "schedule.meeting" in message_class:
                 item_id, path = _stage_pypff_calendar(message, staging_dir)
                 entries.append(
@@ -530,6 +543,7 @@ def _walk_pypff_folder(
                         doc_type="calendar",
                         staged_path=str(path),
                         folder_path=current_path,
+                        source_item_key=source_item_key,
                     )
                 )
             else:
@@ -540,6 +554,7 @@ def _walk_pypff_folder(
                         doc_type="email",
                         staged_path=str(path),
                         folder_path=current_path,
+                        source_item_key=source_item_key,
                     )
                 )
         except Exception:
