@@ -9,7 +9,7 @@ export function PlainShell() {
       <AppShell.Header>
         <AppHeader />
       </AppShell.Header>
-      <AppShell.Main>
+      <AppShell.Main className="app-shell-main">
         <Outlet />
       </AppShell.Main>
     </AppShell>

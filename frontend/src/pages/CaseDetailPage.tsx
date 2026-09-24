@@ -18,6 +18,7 @@ import {
   Title,
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
+import { IconRadar2, IconSparkles } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
@@ -57,9 +58,14 @@ function StepCard({
   children: ReactNode;
 }) {
   return (
-    <Card withBorder radius="md" p="lg" mb="md">
+    <Card p="lg" mb="md">
       <Group align="flex-start" mb="sm">
-        <ThemeIcon radius="xl" size={32}>
+        <ThemeIcon
+          radius="xl"
+          size={32}
+          variant="gradient"
+          gradient={{ from: "indigo.6", to: "indigo.4", deg: 135 }}
+        >
           {number}
         </ThemeIcon>
         <div style={{ flex: 1 }}>
@@ -510,16 +516,21 @@ export function CaseDetailPage() {
         )}
       </StepCard>
 
-      <Card withBorder radius="md" p="lg" mb="md">
+      <Card p="lg" mb="md">
         <Group justify="space-between" align="flex-start" mb="xs">
-          <div>
-            <Title order={4}>Review analytics</Title>
-            <Text size="sm" c="dimmed">
-              Finds near-duplicate documents and marks redundant thread messages (ones whose
-              content is fully quoted in a later message) so they can be filtered out of review.
-              Run this whenever you want it refreshed — it doesn't run automatically.
-            </Text>
-          </div>
+          <Group align="flex-start" wrap="nowrap">
+            <ThemeIcon radius="xl" size={32} variant="light" color="indigo">
+              <IconRadar2 size={18} stroke={1.75} />
+            </ThemeIcon>
+            <div>
+              <Title order={4}>Review analytics</Title>
+              <Text size="sm" c="dimmed">
+                Finds near-duplicate documents and marks redundant thread messages (ones whose
+                content is fully quoted in a later message) so they can be filtered out of
+                review. Run this whenever you want it refreshed — it doesn't run automatically.
+              </Text>
+            </div>
+          </Group>
           {canEdit && (
             <Button
               size="xs"
@@ -548,14 +559,20 @@ export function CaseDetailPage() {
         )}
       </Card>
 
-      <Card withBorder radius="md" p="lg" mb="md">
-        <Title order={4} mb="xs">
-          AI pre-review
-        </Title>
-        <Text size="sm" c="dimmed" mb="sm">
-          Scores each document against your relevance criteria using a connected Ollama model.
-          Scores are advisory only, meant to assist human review — never a final relevance call.
-        </Text>
+      <Card p="lg" mb="md">
+        <Group align="flex-start" wrap="nowrap" mb="xs">
+          <ThemeIcon radius="xl" size={32} variant="light" color="indigo">
+            <IconSparkles size={18} stroke={1.75} />
+          </ThemeIcon>
+          <div style={{ flex: 1 }}>
+            <Title order={4}>AI pre-review</Title>
+            <Text size="sm" c="dimmed">
+              Scores each document against your relevance criteria using a connected Ollama
+              model. Scores are advisory only, meant to assist human review — never a final
+              relevance call.
+            </Text>
+          </div>
+        </Group>
         {aiReview && !aiReview.ollama_configured && (
           <Text size="sm" c="orange" mb="sm">
             Ollama isn't configured yet — an admin can set it up on the Admin page.

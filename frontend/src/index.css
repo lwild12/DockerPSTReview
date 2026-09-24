@@ -1,0 +1,97 @@
+:root {
+  --app-shell-bg-light: #f4f5fa;
+  --app-shell-bg-dark: #16171d;
+  --app-navbar-bg-light: #fafafd;
+  --app-navbar-bg-dark: #1a1b23;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--mantine-color-gray-4) transparent;
+}
+
+[data-mantine-color-scheme="dark"] * {
+  scrollbar-color: var(--mantine-color-dark-3) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: var(--mantine-color-gray-4);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+[data-mantine-color-scheme="dark"] ::-webkit-scrollbar-thumb {
+  background-color: var(--mantine-color-dark-3);
+}
+
+.app-shell-main {
+  background-color: var(--app-shell-bg-light);
+  transition: background-color 150ms ease;
+}
+
+[data-mantine-color-scheme="dark"] .app-shell-main {
+  background-color: var(--app-shell-bg-dark);
+}
+
+.app-shell-navbar {
+  background-color: var(--app-navbar-bg-light);
+}
+
+[data-mantine-color-scheme="dark"] .app-shell-navbar {
+  background-color: var(--app-navbar-bg-dark);
+}
+
+/* Elevate an otherwise-flat bordered card on hover, for cards that act as
+   navigation/click targets (e.g. the case list) -- signals interactivity
+   without needing a whole custom component. */
+.hover-lift {
+  transition:
+    transform 120ms ease,
+    box-shadow 120ms ease,
+    border-color 120ms ease;
+}
+
+.hover-lift:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--mantine-shadow-md);
+  border-color: var(--mantine-color-indigo-3);
+}
+
+[data-mantine-color-scheme="dark"] .hover-lift:hover {
+  border-color: var(--mantine-color-indigo-7);
+}
+
+.auth-page-bg {
+  background: radial-gradient(
+    circle at 50% 0%,
+    var(--mantine-color-indigo-1),
+    var(--app-shell-bg-light) 55%
+  );
+}
+
+[data-mantine-color-scheme="dark"] .auth-page-bg {
+  background: radial-gradient(
+    circle at 50% 0%,
+    var(--mantine-color-indigo-9),
+    var(--app-shell-bg-dark) 55%
+  );
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hover-lift {
+    transition: none;
+  }
+  .hover-lift:hover {
+    transform: none;
+  }
+}
