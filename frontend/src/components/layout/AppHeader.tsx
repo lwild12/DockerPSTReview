@@ -1,5 +1,13 @@
-import { ActionIcon, Avatar, Group, Menu, Text, useMantineColorScheme } from "@mantine/core";
-import { IconLogout, IconMoon, IconSettings, IconSun } from "@tabler/icons-react";
+import {
+  ActionIcon,
+  Avatar,
+  Group,
+  Menu,
+  Text,
+  ThemeIcon,
+  useMantineColorScheme,
+} from "@mantine/core";
+import { IconLogout, IconMailSearch, IconMoon, IconSettings, IconSun } from "@tabler/icons-react";
 import type { ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
@@ -11,17 +19,40 @@ export function AppHeader({ leftSection }: { leftSection?: ReactNode }) {
   const { colorScheme, setColorScheme } = useMantineColorScheme();
 
   return (
-    <Group h="100%" px="md" justify="space-between" wrap="nowrap">
+    <Group
+      h="100%"
+      px="md"
+      justify="space-between"
+      wrap="nowrap"
+      style={{
+        borderBottom: "1px solid var(--mantine-color-default-border)",
+        backdropFilter: "blur(8px)",
+      }}
+    >
       <Group gap="sm" wrap="nowrap">
         {leftSection}
-        <Text
-          fw={700}
-          component={Link}
+        <Link
           to="/cases"
-          style={{ textDecoration: "none", color: "inherit" }}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            textDecoration: "none",
+            color: "inherit",
+          }}
         >
-          PST Review
-        </Text>
+          <ThemeIcon
+            size={30}
+            radius="md"
+            variant="gradient"
+            gradient={{ from: "indigo.6", to: "indigo.4", deg: 135 }}
+          >
+            <IconMailSearch size={18} stroke={2} />
+          </ThemeIcon>
+          <Text fw={700} size="md" lh={1}>
+            PST Review
+          </Text>
+        </Link>
       </Group>
       <Group gap="xs" wrap="nowrap">
         <ActionIcon
@@ -32,7 +63,7 @@ export function AppHeader({ leftSection }: { leftSection?: ReactNode }) {
         >
           {colorScheme === "dark" ? <IconSun size={18} /> : <IconMoon size={18} />}
         </ActionIcon>
-        <Menu position="bottom-end" shadow="md" width={200}>
+        <Menu position="bottom-end" width={200}>
           <Menu.Target>
             <ActionIcon variant="subtle" color="gray" radius="xl" size="lg">
               <Avatar size={28} radius="xl" color="indigo">

@@ -67,16 +67,26 @@ export function CaseShell() {
           }
         />
       </AppShell.Header>
-      <AppShell.Navbar p="sm">
+      <AppShell.Navbar p="sm" className="app-shell-navbar">
         <Stack gap={4}>
           <NavLink
             component={Link}
             to="/cases"
             label="All cases"
             leftSection={<IconArrowLeft size={16} />}
+            c="dimmed"
           />
-          <Divider my="xs" />
-          <Text size="xs" fw={700} c="dimmed" tt="uppercase" px="xs" truncate>
+          <Divider my={6} />
+          <Text
+            size="xs"
+            fw={700}
+            c="dimmed"
+            tt="uppercase"
+            px="xs"
+            mb={2}
+            truncate
+            style={{ letterSpacing: 0.4 }}
+          >
             {caseData?.name ?? "Case"}
           </Text>
           <NavLink
@@ -105,7 +115,7 @@ export function CaseShell() {
           })}
         </Stack>
       </AppShell.Navbar>
-      <AppShell.Main>
+      <AppShell.Main className="app-shell-main">
         <Outlet />
       </AppShell.Main>
     </AppShell>

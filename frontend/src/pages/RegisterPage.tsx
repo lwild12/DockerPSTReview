@@ -1,14 +1,17 @@
 import {
   Alert,
   Anchor,
+  Box,
   Button,
   Paper,
   PasswordInput,
   Stack,
   Text,
   TextInput,
+  ThemeIcon,
   Title,
 } from "@mantine/core";
+import { IconMailSearch } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
@@ -16,6 +19,33 @@ import { Link, useNavigate } from "react-router-dom";
 import { getRegistrationEnabled, register } from "../api/auth";
 import { ApiError } from "../api/client";
 import { useAuth } from "../hooks/useAuth";
+
+function AuthLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <Box
+      mih="100vh"
+      className="auth-page-bg"
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: "2rem 1rem",
+      }}
+    >
+      <Stack align="center" gap="xl" w={380} maw="100%">
+        <ThemeIcon
+          size={52}
+          radius="lg"
+          variant="gradient"
+          gradient={{ from: "indigo.6", to: "indigo.4", deg: 135 }}
+        >
+          <IconMailSearch size={28} stroke={1.75} />
+        </ThemeIcon>
+        {children}
+      </Stack>
+    </Box>
+  );
+}
 
 export function RegisterPage() {
   const { login } = useAuth();
@@ -54,9 +84,9 @@ export function RegisterPage() {
 
   if (!checkingRegistration && registrationEnabled === false) {
     return (
-      <Stack align="center" justify="center" mih="100vh">
-        <Paper withBorder shadow="md" p="xl" w={380}>
-          <Title order={2} mb="lg">
+      <AuthLayout>
+        <Paper withBorder shadow="lg" p="xl" w="100%">
+          <Title order={2} mb="lg" ta="center">
             Registration disabled
           </Title>
           <Text size="sm" c="dimmed" mb="md">
@@ -67,20 +97,20 @@ export function RegisterPage() {
             ← Back to sign in
           </Anchor>
         </Paper>
-      </Stack>
+      </AuthLayout>
     );
   }
 
   return (
-    <Stack align="center" justify="center" mih="100vh">
-      <Paper withBorder shadow="md" p="xl" w={380}>
-        <Title order={2} mb="lg">
-          Create your account
-        </Title>
+    <AuthLayout>
+      <Title order={2} ta="center">
+        Create your account
+      </Title>
+      <Paper withBorder shadow="lg" p="xl" w="100%">
         <form onSubmit={handleSubmit}>
           <Stack>
             {error && (
-              <Alert color="red" title="Couldn't create account">
+              <Alert color="red" title="Couldn't create account" radius="md">
                 {error}
               </Alert>
             )}
@@ -102,7 +132,7 @@ export function RegisterPage() {
               value={password}
               onChange={(e) => setPassword(e.currentTarget.value)}
             />
-            <Button type="submit" loading={submitting} fullWidth>
+            <Button type="submit" loading={submitting} fullWidth mt="xs">
               Register
             </Button>
             <Text size="sm" ta="center">
@@ -111,6 +141,6 @@ export function RegisterPage() {
           </Stack>
         </form>
       </Paper>
-    </Stack>
+    </AuthLayout>
   );
 }
